@@ -31,6 +31,13 @@ namespace KeyboardChatterBlocker.UI.Theme
         [DllImport("user32.dll", CharSet = CharSet.Auto)]
         public static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
 
+        // —— 前台窗口（自动禁用程序的前台判定用）——
+        [DllImport("user32.dll")]
+        public static extern IntPtr GetForegroundWindow();
+
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
         // —— DWM（Win11 圆角 / 边框色）——
         public const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
         public const int DWMWA_BORDER_COLOR = 34;

@@ -48,7 +48,7 @@ AcceleratedKeyMap.cs  KeysHelper.cs  FullScreenDetectHelper.cs  KBCUtils.cs  Key
 鼠标键与滚轮抖动、临时屏蔽组合键、自动禁用程序列表、全屏自动禁用、其他键重置超时、
 系统托盘、开机自启、统计、抖动日志、提示音。
 
-### 六处必须告知的偏离
+### 七处必须告知的偏离
 
 1. **`Core/HotKeys.cs` 删除了 2 行**（`using System.Security.Permissions;` 与
    `[PermissionSet(SecurityAction.LinkDemand, Name = "FullTrust")]`）。
@@ -101,6 +101,15 @@ AcceleratedKeyMap.cs  KeysHelper.cs  FullScreenDetectHelper.cs  KBCUtils.cs  Key
    - **风险**：这属于合成输入。部分游戏（尤其带反作弊的）会丢弃合成事件；
      它也是本项目里唯一会主动往输入流写数据的地方，所以默认关闭。
 
+7. **新增「仅在该程序位于前台时禁用」开关，默认开启** —— 自动禁用程序列表的判定方式。
+   - 上游行为：只要列表里的进程**在运行**就暂停屏蔽，不管它是不是当前窗口。
+     把游戏最小化挂到后台去用浏览器，屏蔽会一直停着。
+   - 本版默认只在**该程序位于前台窗口**时才暂停屏蔽；切到别的窗口立刻恢复。
+   - 「自动禁用程序」页可关掉这个开关，回到上游行为。
+   - 对应配置项 `auto_disable_foreground_only`（上游读到会忽略）。
+   - 顺带的好处：「仅前台」模式下直接查询前台窗口所属进程即可，
+     不再需要每 2 秒枚举一次全部进程。
+
 ---
 
 ## 下载与运行
@@ -148,6 +157,7 @@ auto_disable_programs: notepad/calc
 auto_disable_on_fullscreen: false
 other_key_resets_timeout: false
 exclude_injected: false
+auto_disable_foreground_only: true
 
 hold_rescue_time: 150
 
@@ -225,6 +235,7 @@ PerMonitorV2 下 WinForms 会把 `AutoScaleDimensions` 改写成当前 DPI，导
 |---|---|
 | `Core/` 逐字节比对 | 5 个文件与上游完全一致；`HotKeys.cs` / `KeyboardInterceptor.cs` / `KeyBlocker.cs` 有上文列明的改动 |
 | 长按救援 | 被拦后按住 400ms 救回 1 次；仅按 60ms 不触发（不会凭空造出按键）；阈值为 0 时不触发 |
+| 仅前台自动禁用 | 列表程序在后台运行时不暂停屏蔽；当前台进程命中列表时暂停；开关关闭后恢复上游行为；目标退出后恢复屏蔽 |
 | 合成输入可用性 | `INPUT` 结构体 40 字节；`SendInput` 返回成功，且本程序自己的钩子能收到合成事件 |
 | 新配置项往返 | `hold_rescue_time: 150` 关闭后原样写回 |
 | `config.txt` 往返 | 乱序输入 → 程序重写为规范格式，所有键值与热键、自动禁用列表完整保留 |

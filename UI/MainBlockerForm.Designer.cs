@@ -77,6 +77,8 @@ namespace KeyboardChatterBlocker
         // —— 自动禁用程序页 ——
         public ModernListView AutoDisableProgramsList;
         public ModernCheckBox AutoDisableOnFullscreenCheckbox;
+        public ModernCheckBox AutoDisableForegroundOnlyCheckbox;
+        private ModernLabel autoDisableForegroundOnlyHint;
         public ModernTextBox AddProgramTextBox;
         public ModernButton AddToListButton;
         public ModernButton RemoveProgramButton;
@@ -459,6 +461,23 @@ namespace KeyboardChatterBlocker
             };
             AutoDisableOnFullscreenCheckbox.CheckedChanged += AutoDisableOnFullscreenCheckbox_CheckedChanged;
 
+            AutoDisableForegroundOnlyCheckbox = new ModernCheckBox
+            {
+                Text = Strings.AutoDisableForegroundOnly,
+                Dock = DockStyle.Top,
+                Height = P(26),
+            };
+            AutoDisableForegroundOnlyCheckbox.CheckedChanged += AutoDisableForegroundOnlyCheckbox_CheckedChanged;
+
+            autoDisableForegroundOnlyHint = new ModernLabel
+            {
+                Text = Strings.AutoDisableForegroundOnlyHint,
+                Font = Fonts.Small,
+                ForeColor = ThemeManager.Current.TextMuted,
+                Dock = DockStyle.Top,
+                Height = P(22),
+            };
+
             TableLayoutPanel addRow = new TableLayoutPanel
             {
                 Dock = DockStyle.Bottom,
@@ -528,6 +547,8 @@ namespace KeyboardChatterBlocker
             card.Controls.Add(AutoDisableProgramsList);
             card.Controls.Add(addRow);
             card.Controls.Add(autoDisableEmptyHint);
+            card.Controls.Add(autoDisableForegroundOnlyHint);
+            card.Controls.Add(AutoDisableForegroundOnlyCheckbox);
             card.Controls.Add(AutoDisableOnFullscreenCheckbox);
             card.Controls.Add(hint);
             card.Controls.Add(title);

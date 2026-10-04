@@ -422,8 +422,13 @@ namespace KeyboardChatterBlocker
                 SetAutoDisable(false, "none");
                 return;
             }
+            // 「仅前台」模式下候选集合只有前台窗口所属的那一个进程 ——
+            // 比枚举全部进程更贴合意图，也便宜得多（不必每 2 秒给每个进程开一次句柄）。
+            IEnumerable<string> candidates = Program.Blocker.AutoDisableForegroundOnly
+                ? (GetForegroundProcessName() is string fg ? new[] { fg } : Enumerable.Empty<string>())
+                : Process.GetProcesses().Select(p => p.ProcessName.ToLowerInvariant());
             bool any = false;
-            foreach (string proc in Process.GetProcesses().Select(p => p.ProcessName.ToLowerInvariant()))
+            foreach (string proc in candidates)
             {
                 if (programsToCheck.Contains(proc))
                 {
@@ -443,6 +448,35 @@ namespace KeyboardChatterBlocker
                 {
                     SetAutoDisableProgramHighlight(notBlocking, false);
                 }
+            }
+        }
+
+        /// <summary>
+        /// 取当前前台窗口所属进程的进程名（小写）；取不到返回 null。
+        /// </summary>
+        private static string GetForegroundProcessName()
+        {
+            IntPtr hwnd = NativeMethods.GetForegroundWindow();
+            if (hwnd == IntPtr.Zero)
+            {
+                return null;
+            }
+            NativeMethods.GetWindowThreadProcessId(hwnd, out uint pid);
+            if (pid == 0)
+            {
+                return null;
+            }
+            try
+            {
+                using (Process p = Process.GetProcessById((int)pid))
+                {
+                    return p.ProcessName.ToLowerInvariant();
+                }
+            }
+            catch (Exception)
+            {
+                // 进程可能刚好退出，或权限不足 —— 当作「没有前台命中」处理
+                return null;
             }
         }
 
@@ -481,6 +515,7 @@ namespace KeyboardChatterBlocker
             AutoDisableProgramsList.Items.AddRange(Program.Blocker.AutoDisablePrograms.Select(s => new ListViewItem(s)).ToArray());
             UpdateAutoDisableEmptyHint();
             AutoDisableOnFullscreenCheckbox.Checked = Program.Blocker.AutoDisableOnFullscreen;
+            AutoDisableForegroundOnlyCheckbox.Checked = Program.Blocker.AutoDisableForegroundOnly;
             ChatterThresholdBox.Value = Program.Blocker.GlobalChatterTimeLimit;
             MeasureFromComboBox.SelectedIndex = Program.Blocker.MeasureMode == KeyBlocker.MeasureFrom.Release ? 1 : 0;
             EnabledCheckbox.Checked = Program.Blocker.IsEnabled;
@@ -927,6 +962,21 @@ namespace KeyboardChatterBlocker
             }
             Program.Blocker.AutoDisableOnFullscreen = AutoDisableOnFullscreenCheckbox.Checked;
             Program.Blocker.SaveConfig();
+        }
+
+        /// <summary>
+        /// Event method to handle the 'foreground only' checkbox state changing.
+        /// 立即重新判定一次，免得要等 2 秒的轮询才生效。
+        /// </summary>
+        private void AutoDisableForegroundOnlyCheckbox_CheckedChanged(object sender, EventArgs e)
+        {
+            if (Loading)
+            {
+                return;
+            }
+            Program.Blocker.AutoDisableForegroundOnly = AutoDisableForegroundOnlyCheckbox.Checked;
+            Program.Blocker.SaveConfig();
+            CheckAutoDisable();
         }
 
         /// <summary>

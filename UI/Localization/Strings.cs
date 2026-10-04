@@ -64,6 +64,8 @@ namespace KeyboardChatterBlocker.UI.Localization
         public const string AutoDisableTitle = "自动禁用程序";
         public const string AutoDisableHint = "列出的程序一旦运行，屏蔽会自动暂停（适合游戏等对输入延迟敏感的场合）。";
         public const string AutoDisableFullscreen = "检测到全屏时自动禁用";
+        public const string AutoDisableForegroundOnly = "仅在该程序位于前台时禁用";
+        public const string AutoDisableForegroundOnlyHint = "关闭则只要程序在运行就暂停屏蔽（上游原有行为）。";
         public const string AddToList = "添加到列表";
         public const string RemoveFromList = "从列表移除";
         public const string ProgramPlaceholder = "程序名（如 chrome.exe）";

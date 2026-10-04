@@ -174,6 +174,10 @@ namespace KeyboardChatterBlocker
                 case "auto_disable_on_fullscreen":
                     AutoDisableOnFullscreen = SettingAsBool(settingValue);
                     break;
+                // 本版新增。上游程序读到这一行会忽略（switch 里没有对应分支）。
+                case "auto_disable_foreground_only":
+                    AutoDisableForegroundOnly = SettingAsBool(settingValue);
+                    break;
                 case "other_key_resets_timeout":
                     OtherKeyResetsTimeout = SettingAsBool(settingValue);
                     break;
@@ -285,6 +289,7 @@ namespace KeyboardChatterBlocker
                 result.Append("auto_disable_programs: ").Append(string.Join("/", AutoDisablePrograms)).Append("\n");
             }
             result.Append("auto_disable_on_fullscreen: ").Append(AutoDisableOnFullscreen ? "true" : "false").Append("\n");
+            result.Append("auto_disable_foreground_only: ").Append(AutoDisableForegroundOnly ? "true" : "false").Append("\n");
             result.Append("other_key_resets_timeout: ").Append(OtherKeyResetsTimeout ? "true" : "false").Append("\n");
             result.Append("exclude_injected: ").Append(ExcludeInjected ? "true" : "false").Append("\n");
             result.Append("hold_rescue_time: ").Append(HoldRescueTime).Append("\n");
@@ -461,6 +466,15 @@ namespace KeyboardChatterBlocker
         /// Whether to automatically disable the blocker when any program is full screen.
         /// </summary>
         public bool AutoDisableOnFullscreen = false;
+
+        /// <summary>
+        /// 自动禁用程序列表的判定方式（本版新增，默认 true）。
+        /// <para>
+        /// <c>true</c>：只有列表中的程序**位于前台窗口**时才暂停屏蔽 —— 把游戏挂到后台时屏蔽会恢复。<br/>
+        /// <c>false</c>：沿用上游行为，只要该进程在运行就暂停屏蔽（哪怕它最小化在后台）。
+        /// </para>
+        /// </summary>
+        public bool AutoDisableForegroundOnly = true;
 
         /// <summary>
         /// If true, reset timeouts for keys when another key is pressed.
