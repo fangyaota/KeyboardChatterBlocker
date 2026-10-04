@@ -175,6 +175,9 @@ namespace KeyboardChatterBlocker
                     AutoDisableOnFullscreen = SettingAsBool(settingValue);
                     break;
                 // 本版新增。上游程序读到这一行会忽略（switch 里没有对应分支）。
+                case "close_to_tray":
+                    CloseToTray = SettingAsBool(settingValue);
+                    break;
                 case "auto_disable_foreground_only":
                     AutoDisableForegroundOnly = SettingAsBool(settingValue);
                     break;
@@ -293,6 +296,7 @@ namespace KeyboardChatterBlocker
             result.Append("other_key_resets_timeout: ").Append(OtherKeyResetsTimeout ? "true" : "false").Append("\n");
             result.Append("exclude_injected: ").Append(ExcludeInjected ? "true" : "false").Append("\n");
             result.Append("hold_rescue_time: ").Append(HoldRescueTime).Append("\n");
+            result.Append("close_to_tray: ").Append(CloseToTray ? "true" : "false").Append("\n");
             result.Append("\n");
             foreach (KeyValuePair<string, string> pair in Hotkeys)
             {
@@ -466,6 +470,20 @@ namespace KeyboardChatterBlocker
         /// Whether to automatically disable the blocker when any program is full screen.
         /// </summary>
         public bool AutoDisableOnFullscreen = false;
+
+        /// <summary>
+        /// 点击标题栏的关闭按钮时，是隐藏到系统托盘还是真的退出（本版新增，默认 true）。
+        /// <para>
+        /// 上游用 <c>hide_in_system_tray</c> 同时管「启动时隐藏」和「关闭时隐藏」两件事，
+        /// 而那个开关的名字只提了启动 —— 很难看出关窗口也会躲进托盘。本版把它拆开：
+        /// 启动仍由 <c>hide_in_system_tray</c> 管，关闭由本项管。
+        /// </para>
+        /// <para>
+        /// 若托盘图标被 <see cref="Program.DisableTrayIcon"/> 关掉，则关闭照常退出 ——
+        /// 否则窗口会既不在任务栏也没有托盘图标，无处可寻。
+        /// </para>
+        /// </summary>
+        public bool CloseToTray = true;
 
         /// <summary>
         /// 自动禁用程序列表的判定方式（本版新增，默认 true）。

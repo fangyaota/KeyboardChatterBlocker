@@ -49,7 +49,7 @@ AcceleratedKeyMap.cs  KeysHelper.cs  FullScreenDetectHelper.cs  KBCUtils.cs  Key
 鼠标键与滚轮抖动、临时屏蔽组合键、自动禁用程序列表、全屏自动禁用、其他键重置超时、
 系统托盘、开机自启、统计、抖动日志、提示音。
 
-### 八处必须告知的偏离
+### 九处必须告知的偏离
 
 1. **`Core/HotKeys.cs` 删除了 2 行**（`using System.Security.Permissions;` 与
    `[PermissionSet(SecurityAction.LinkDemand, Name = "FullTrust")]`）。
@@ -122,6 +122,13 @@ AcceleratedKeyMap.cs  KeysHelper.cs  FullScreenDetectHelper.cs  KBCUtils.cs  Key
    - 该回调处在输入路径上，因此只做数值记录与设置控件文本（设置 Text 只标脏、
      不会同步重绘），重绘交给下一帧。
 
+9. **「关闭时隐藏到托盘」拆成独立开关，默认开启。**
+   上游用 `hide_in_system_tray` 一个开关同时管「启动时隐藏」和「关闭时隐藏」，
+   而那个名字只提了启动 —— 很难看出点关闭也会躲进托盘。
+   本版拆开：启动仍由 `hide_in_system_tray` 管，关闭由新增的 `close_to_tray` 管。
+   托盘图标被 `disable_tray_icon` 关掉时，关闭会照常退出（否则窗口既不在任务栏、
+   也没有托盘图标，将无处可寻）。
+
 ---
 
 ## 下载与运行
@@ -170,6 +177,7 @@ auto_disable_on_fullscreen: false
 other_key_resets_timeout: false
 exclude_injected: false
 auto_disable_foreground_only: true
+close_to_tray: true
 
 hold_rescue_time: 150
 
@@ -250,6 +258,7 @@ PerMonitorV2 下 WinForms 会把 `AutoScaleDimensions` 改写成当前 DPI，导
 | 仅前台自动禁用 | 列表程序在后台运行时不暂停屏蔽；当前台进程命中列表时暂停；开关关闭后恢复上游行为；目标退出后恢复屏蔽 |
 | 键盘测试页 | 注入按键后键盘图正确高亮（放行=蓝、被拦=红），间隔读数与判定徽标同步更新 |
 | 右侧读数边栏 | 读数随按键实时更新；收起后内容区自动填满，标题栏开关的颜色跟随状态变化（展开=强调色、收起=灰） |
+| 关闭到托盘 | 走真实 ✕ 路径（`Form.Close()`）时 `CloseReason=UserClosing, Cancel=True`，窗口隐藏且托盘图标出现；`close_to_tray: false` 时正常退出；与 `hide_in_system_tray` 互相独立 |
 | 输入焦点 | 启动后及每次换页都会把焦点从侧边栏阈值框让开 —— 否则在这个键盘工具里随便敲什么都会跑进阈值框 |
 | 合成输入可用性 | `INPUT` 结构体 40 字节；`SendInput` 返回成功，且本程序自己的钩子能收到合成事件 |
 | 新配置项往返 | `hold_rescue_time: 150` 关闭后原样写回 |

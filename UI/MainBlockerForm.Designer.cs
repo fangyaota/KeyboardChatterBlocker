@@ -46,6 +46,7 @@ namespace KeyboardChatterBlocker
         // —— 启动卡片 ——
         public ModernCheckBox StartWithWindowsCheckbox;
         public ModernCheckBox TrayIconCheckbox;
+        public ModernCheckBox CloseToTrayCheckbox;
 
         // —— 导航 ——
         private SideNavButton navLog;
@@ -124,7 +125,7 @@ namespace KeyboardChatterBlocker
         // —— 96 DPI 基准的逻辑尺寸（全部经 P() 换算成设备像素）——
         private const int SidebarCellMargin = 12;
         private const int StatusCardHeight = 168;
-        private const int StartupCardHeight = 112;
+        private const int StartupCardHeight = 140;
         private const int PageMargin = 12;
 
         /// <summary>逻辑像素 → 设备像素的简写。</summary>
@@ -324,6 +325,16 @@ namespace KeyboardChatterBlocker
             TrayIconCheckbox.SetBounds(pad, pad + P(46), inner, P(22));
             TrayIconCheckbox.CheckedChanged += TrayIconCheckbox_CheckedChanged;
 
+            CloseToTrayCheckbox = new ModernCheckBox
+            {
+                Text = Strings.CloseToTray,
+                Width = inner,
+                Height = P(22),
+            };
+            CloseToTrayCheckbox.SetBounds(pad, pad + P(74), inner, P(22));
+            CloseToTrayCheckbox.CheckedChanged += CloseToTrayCheckbox_CheckedChanged;
+
+            startupCard.Controls.Add(CloseToTrayCheckbox);
             startupCard.Controls.Add(TrayIconCheckbox);
             startupCard.Controls.Add(StartWithWindowsCheckbox);
             startupCard.Controls.Add(caption);

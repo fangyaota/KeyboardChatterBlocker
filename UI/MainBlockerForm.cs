@@ -672,6 +672,7 @@ namespace KeyboardChatterBlocker
             EnableNoteLabel.BackColor = Color.Transparent;
             EnableNoteLabel.Visible = false;
             TrayIconCheckbox.Checked = Program.HideInSystemTray;
+            CloseToTrayCheckbox.Checked = Program.Blocker.CloseToTray;
             if (Program.HideInSystemTray)
             {
                 if (!Program.DisableTrayIcon)
@@ -780,7 +781,10 @@ namespace KeyboardChatterBlocker
             {
                 return;
             }
-            if (Program.HideInSystemTray)
+            // 用独立的「关闭到托盘」开关 —— 上游把它和「启动时隐藏」混在一个
+            // hide_in_system_tray 里，而那个名字只提了启动，很难看出关窗口也会躲进托盘。
+            // 托盘图标被关掉时不隐藏，否则窗口会无处可寻。
+            if (Program.Blocker.CloseToTray && !Program.DisableTrayIcon)
             {
                 e.Cancel = true;
                 HideForm();
@@ -1141,6 +1145,19 @@ namespace KeyboardChatterBlocker
                 return;
             }
             Program.Blocker.AutoDisableOnFullscreen = AutoDisableOnFullscreenCheckbox.Checked;
+            Program.Blocker.SaveConfig();
+        }
+
+        /// <summary>
+        /// Event method to handle the 'close to tray' checkbox state changing.
+        /// </summary>
+        private void CloseToTrayCheckbox_CheckedChanged(object sender, EventArgs e)
+        {
+            if (Loading)
+            {
+                return;
+            }
+            Program.Blocker.CloseToTray = CloseToTrayCheckbox.Checked;
             Program.Blocker.SaveConfig();
         }
 

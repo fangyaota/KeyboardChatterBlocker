@@ -18,7 +18,8 @@
         public const string GlobalThreshold = "全局抖动阈值";
         public const string Milliseconds = "毫秒";
         public const string StartWithWindows = "开机自启";
-        public const string StartInTray = "启动时最小化到托盘";
+        public const string StartInTray = "启动时隐藏到托盘";
+        public const string CloseToTray = "点关闭时隐藏到托盘";
         public const string AutoDisablePrefix = "（已自动禁用：";
         public const string AutoDisableSuffix = "）";
         public const string ReasonFullscreen = "全屏应用";
