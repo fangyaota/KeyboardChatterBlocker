@@ -1,3 +1,4 @@
+﻿using System.ComponentModel;
 using System.Drawing;
 using System.Windows.Forms;
 using KeyboardChatterBlocker.UI.Theme;
@@ -35,6 +36,31 @@ namespace KeyboardChatterBlocker.UI.Controls
             Font = Fonts.Body;
             BackgroundColor = ThemeManager.Current.GridBg;
             ApplyTheme();
+        }
+
+        /// <summary>
+        /// 行被增删后，重新套用用户当前选择的排序。
+        /// <para>
+        /// DataGridView 的排序状态记在列的 <c>HeaderCell.SortGlyphDirection</c> 上，
+        /// <c>Rows.Clear()</c> 不会清掉它 —— 但新加入的行也不会自动按它排列。
+        /// 因此每次重建或追加行之后都必须显式重排，
+        /// 否则用户点击列头选的排序会在下一次刷新时被悄悄重置掉。
+        /// </para>
+        /// </summary>
+        public void ReapplySort()
+        {
+            foreach (DataGridViewColumn column in Columns)
+            {
+                SortOrder order = column.HeaderCell.SortGlyphDirection;
+                if (order == SortOrder.None)
+                {
+                    continue;
+                }
+                Sort(column, order == SortOrder.Ascending
+                    ? ListSortDirection.Ascending
+                    : ListSortDirection.Descending);
+                return;
+            }
         }
 
         /// <summary>按当前主题刷新配色。主题变更时由窗体调用。</summary>

@@ -45,7 +45,7 @@ FullScreenDetectHelper.cs  KBCUtils.cs  KeyBlockedEventArgs.cs
 鼠标键与滚轮抖动、临时屏蔽组合键、自动禁用程序列表、全屏自动禁用、其他键重置超时、
 系统托盘、开机自启、统计、抖动日志、提示音。
 
-### 三处必须告知的偏离
+### 五处必须告知的偏离
 
 1. **`Core/HotKeys.cs` 删除了 2 行**（`using System.Security.Permissions;` 与
    `[PermissionSet(SecurityAction.LinkDemand, Name = "FullTrust")]`）。
@@ -71,6 +71,20 @@ FullScreenDetectHelper.cs  KBCUtils.cs  KeyBlockedEventArgs.cs
    ⚠️ 注意：原版用**定时器 tick 次数**计满 30 分钟再自动保存统计（1800 次 × 1 秒）。
    若只把间隔调快，自动保存会变成 4.5 分钟一次 —— 那是行为变更。因此保存计时已改为按真实时间
    每秒记一次，**30 分钟的保存节奏与原版一致**。改 `StatsRefreshIntervalMs` 这个常量不会影响它。
+
+5. **表格行序**，纯展示层，不涉及数据与配置。
+   原版每次刷新都直接按 `Dictionary` 的遍历顺序重建表格 —— 也就是「按键第一次被按下
+   （或从配置读入）的顺序」，对使用者等于随机，而且会随使用漂移。
+   更糟的是：点击列头排序后，下一次刷新会把用户的排序**悄悄重置掉**。
+   本版：
+
+   - 未点列头时有一个确定的默认序 —— 统计页按**抖动次数降序**（问题键浮到最前），
+     按键配置页按**按键名升序**；同值时按键名排，保证打字过程中表格不会自己跳
+   - 点击列头选择的排序，会在每次刷新重建后**重新套用**
+     （`ModernDataGridView.ReapplySort()`，DataGridView 的排序状态记在列头的
+     `SortGlyphDirection` 上，`Rows.Clear()` 不会清掉它，但新行也不会自动按它排列）
+   - 数值列声明了 `ValueType = int`，按数值而非字符串比较
+     —— 否则「按下次数」会排成 `100, 30, 50, 80`
 
 ---
 
@@ -191,6 +205,8 @@ PerMonitorV2 下 WinForms 会把 `AutoScaleDimensions` 改写成当前 DPI，导
 | `blocker_stats.csv` 往返 | 格式与尾随逗号保留；`mouse_left` 行在加载时被丢弃 —— 这是**上游未修改代码的既有行为**，未做「顺手修复」 |
 | 单文件发布 | 依赖运行时模式 480 KB，可直接运行 |
 | 配置路径分支 | 普通目录 → 落在 exe 旁；路径含 `Program Files` → 落到 `%localappdata%\KeyboardChatterBlocker` |
+| 表格排序持久性 | 点选列头排序后连续重建 2 次，行序不变；换列、换升降序均正确；数值列按数值比较 |
+| 统计刷新实际节拍 | 连打 2 秒共刷新 13 次，相邻间隔中位数 156 ms（150ms 定时器 + 定时器分辨率） |
 | 亮/暗主题 · 150% DPI | 全页面走查通过（截图见 [`docs/screenshots/`](docs/screenshots/)） |
 
 **未在真机长时间启用拦截做实测** —— 该程序会全局拦截按键，风险较高。

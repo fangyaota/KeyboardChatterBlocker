@@ -359,7 +359,7 @@ namespace KeyboardChatterBlocker
             colLogTime = new DataGridViewTextBoxColumn { HeaderText = Strings.ColTime, Width = P(150) };
             // 「按键」列吃掉剩余宽度，避免右侧留一条突兀的空白
             colLogKey = new DataGridViewTextBoxColumn { HeaderText = Strings.ColKey, AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill, MinimumWidth = P(140) };
-            colLogDelay = new DataGridViewTextBoxColumn { HeaderText = Strings.ColChatterDelay, Width = P(180) };
+            colLogDelay = new DataGridViewTextBoxColumn { HeaderText = Strings.ColChatterDelay, Width = P(180), ValueType = typeof(int) };
             colLogConfigure = new DataGridViewTextBoxColumn { HeaderText = Strings.ColConfigure, Width = P(90) };
             grid.Columns.AddRange(colLogTime, colLogKey, colLogDelay, colLogConfigure);
             grid.CellContentDoubleClick += ChatterLogGrid_CellContentDoubleClick;
@@ -375,8 +375,8 @@ namespace KeyboardChatterBlocker
 
             ModernDataGridView grid = new ModernDataGridView { Dock = DockStyle.Fill };
             colStatsKey = new DataGridViewTextBoxColumn { HeaderText = Strings.ColKey, AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill, MinimumWidth = P(160) };
-            colStatsCount = new DataGridViewTextBoxColumn { HeaderText = Strings.ColCount, Width = P(120) };
-            colStatsChatter = new DataGridViewTextBoxColumn { HeaderText = Strings.ColChatter, Width = P(120) };
+            colStatsCount = new DataGridViewTextBoxColumn { HeaderText = Strings.ColCount, Width = P(120), ValueType = typeof(int) };
+            colStatsChatter = new DataGridViewTextBoxColumn { HeaderText = Strings.ColChatter, Width = P(120), ValueType = typeof(int) };
             colStatsRate = new DataGridViewTextBoxColumn { HeaderText = Strings.ColRate, Width = P(110) };
             grid.Columns.AddRange(colStatsKey, colStatsCount, colStatsChatter, colStatsRate);
             StatsGrid = grid;
@@ -391,7 +391,7 @@ namespace KeyboardChatterBlocker
 
             ModernDataGridView grid = new ModernDataGridView { Dock = DockStyle.Fill };
             colCfgKey = new DataGridViewTextBoxColumn { HeaderText = Strings.ColKey, AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill, MinimumWidth = P(180) };
-            colCfgThreshold = new DataGridViewTextBoxColumn { HeaderText = Strings.ColThreshold, Width = P(170) };
+            colCfgThreshold = new DataGridViewTextBoxColumn { HeaderText = Strings.ColThreshold, Width = P(170), ValueType = typeof(int) };
             colCfgRemove = new DataGridViewTextBoxColumn { HeaderText = Strings.ColRemove, Width = P(100) };
             grid.Columns.AddRange(colCfgKey, colCfgThreshold, colCfgRemove);
             grid.CellContentDoubleClick += ConfigureKeysGrid_CellContentDoubleClick;

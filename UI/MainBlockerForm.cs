@@ -38,6 +38,26 @@ namespace KeyboardChatterBlocker
         /// <summary>当前显示的页面。</summary>
         private MainPage _currentPage = MainPage.Log;
 
+        /// <summary>
+        /// 表格排序用的键名比较器。
+        /// 忽略大小写、固定用不变文化 —— <see cref="Program.NormalizeCulture"/> 已把当前文化锁成
+        /// Invariant，用固定比较器可保证排序结果在任何机器上都一致。
+        /// </summary>
+        private static readonly StringComparer KeyNameComparer = StringComparer.Create(CultureInfo.InvariantCulture, true);
+
+        /// <summary>
+        /// 统计页刷新间隔（毫秒）。
+        /// <para>
+        /// 原版是 1000ms，按下按键后数字要等一秒才跳，手感迟钝。
+        /// 这里调快只是为了视觉跟手：<see cref="Program.Blocker"/> 的 <c>AnyKeyChange</c> 为 false 时
+        /// 整个 tick 只是两次布尔判断，空转开销可忽略，实际重建表格的频率仍受「有按键发生」约束。
+        /// </para>
+        /// </summary>
+        private const int StatsRefreshIntervalMs = 150;
+
+        /// <summary>上次把 <c>SaveStatsTicker</c> 加一的时间，用于把自动保存计时与刷新频率解耦。</summary>
+        private DateTime _lastStatsSaveTick = DateTime.UtcNow;
+
         /// <summary>Shows the form fully and properly.</summary>
         public void ShowForm()
         {
@@ -131,6 +151,8 @@ namespace KeyboardChatterBlocker
                 KeyNames.Display(e.Key),
                 e.Time,
                 Strings.CellEdit);
+            // 追加的行同样要落进用户选的排序里（未排序时该调用零开销）
+            ChatterLogGrid.ReapplySort();
             if (wasScrolledToBottom && ChatterLogGrid.RowCount > 0)
             {
                 ChatterLogGrid.FirstDisplayedScrollingRowIndex = ChatterLogGrid.RowCount - 1;
@@ -467,19 +489,6 @@ namespace KeyboardChatterBlocker
         }
 
         /// <summary>
-        /// 统计页刷新间隔（毫秒）。
-        /// <para>
-        /// 原版是 1000ms，按下按键后数字要等一秒才跳，手感迟钝。
-        /// 这里调快只是为了视觉跟手：<see cref="Program.Blocker"/> 的 <c>AnyKeyChange</c> 为 false 时
-        /// 整个 tick 只是两次布尔判断，空转开销可忽略，实际重建表格的频率仍受「有按键发生」约束。
-        /// </para>
-        /// </summary>
-        private const int StatsRefreshIntervalMs = 150;
-
-        /// <summary>上次把 <c>SaveStatsTicker</c> 加一的时间，用于把自动保存计时与刷新频率解耦。</summary>
-        private DateTime _lastStatsSaveTick = DateTime.UtcNow;
-
-        /// <summary>
         /// Automatic stats update timer, when the stats view is visible.
         /// </summary>
         public void StatsUpdateTimer_Tick(object sender, EventArgs e)
@@ -545,15 +554,25 @@ namespace KeyboardChatterBlocker
         /// </summary>
         public void PushStatsToGrid()
         {
+            // 原版直接按 Dictionary 的遍历顺序输出，等于「首次按下的顺序」，对使用者就是乱的。
+            // 这里给一个确定的序：抖动次数多的排前面（便于定位问题键），同次数时按键名排，
+            // 保证表格不会在打字过程中自己跳来跳去。
+            List<KeyValuePair<Keys, int>> ordered = Program.Blocker.StatsKeyCount.MainDictionary
+                .OrderByDescending(kv => Program.Blocker.StatsKeyChatter[kv.Key])
+                .ThenBy(kv => KeyNames.Display(kv.Key), KeyNameComparer)
+                .ToList();
+
             StatsGrid.SuspendLayout();
             StatsGrid.Rows.Clear();
-            foreach (KeyValuePair<Keys, int> keyData in Program.Blocker.StatsKeyCount.MainDictionary)
+            foreach (KeyValuePair<Keys, int> keyData in ordered)
             {
                 int chatterTotal = Program.Blocker.StatsKeyChatter[keyData.Key];
                 string percentage = chatterTotal == 0 ? "" : ((chatterTotal * 100.0f / keyData.Value).ToString("00.00", CultureInfo.InvariantCulture) + "%");
                 StatsGrid.Rows.Add(KeyNames.Display(keyData.Key), keyData.Value, chatterTotal, percentage);
             }
             StatsGrid.ResumeLayout(true);
+            // 重建会丢掉行序，必须把用户点选的排序重新套上
+            StatsGrid.ReapplySort();
         }
 
         /// <summary>
@@ -561,17 +580,20 @@ namespace KeyboardChatterBlocker
         /// </summary>
         public void PushKeysToGrid()
         {
+            // 同样按按键名排序，便于在列表里定位某个键
+            List<KeyValuePair<Keys, uint?>> ordered = Program.Blocker.KeysToChatterTime.MainDictionary
+                .Where(kv => kv.Value.HasValue)
+                .OrderBy(kv => KeyNames.Display(kv.Key), KeyNameComparer)
+                .ToList();
+
             ConfigureKeysGrid.SuspendLayout();
             ConfigureKeysGrid.Rows.Clear();
-            foreach (KeyValuePair<Keys, uint?> keyData in Program.Blocker.KeysToChatterTime.MainDictionary)
+            foreach (KeyValuePair<Keys, uint?> keyData in ordered)
             {
-                if (!keyData.Value.HasValue)
-                {
-                    continue;
-                }
                 ConfigureKeysGrid.Rows.Add(KeyNames.Display(keyData.Key), keyData.Value.Value, Strings.RemoveKey);
             }
             ConfigureKeysGrid.ResumeLayout(true);
+            ConfigureKeysGrid.ReapplySort();
         }
 
         // ============================================================
@@ -652,7 +674,8 @@ namespace KeyboardChatterBlocker
             }
             Program.Blocker.KeysToChatterTime[result.Value] = Program.Blocker.GlobalChatterTimeLimit;
             Program.Blocker.SaveConfig();
-            ConfigureKeysGrid.Rows.Add(KeyNames.Display(result.Value), Program.Blocker.GlobalChatterTimeLimit, Strings.RemoveKey);
+            // 重建而非追加，否则新键会落在末尾、破坏排序
+            PushKeysToGrid();
         }
 
         // ============================================================
@@ -694,7 +717,8 @@ namespace KeyboardChatterBlocker
                 {
                     Program.Blocker.KeysToChatterTime[key] = Program.Blocker.GlobalChatterTimeLimit;
                     Program.Blocker.SaveConfig();
-                    ConfigureKeysGrid.Rows.Add(KeyNames.Display(key), Program.Blocker.GlobalChatterTimeLimit, Strings.RemoveKey);
+                    // 同上：重建以保证有序
+                    PushKeysToGrid();
                 }
                 string keyText = KeyNames.Display(key);
                 NavigateTo(MainPage.Keys);
