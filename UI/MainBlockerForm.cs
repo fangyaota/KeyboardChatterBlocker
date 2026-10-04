@@ -142,6 +142,9 @@ namespace KeyboardChatterBlocker
             }
             Program.Blocker.KeyBlockedEvent += LogKeyBlocked;
             InitializeComponent();
+            // 键盘测试页需要每一个键盘事件，而不只是被拦下的那些。
+            // 放在 InitializeComponent 之后订阅，确保 TestKeyboardMap 已经建好。
+            Program.Interceptor.KeyEvent += OnInterceptorKeyEvent;
             versionAboutLabel.Text = string.Format(Strings.AboutVersionFormat, Application.ProductVersion);
             EnableEdgeResize(this);
             Load += MainBlockerForm_Load;
@@ -195,6 +198,13 @@ namespace KeyboardChatterBlocker
             if (!Loading)
             {
                 PushStatsToGrid();
+                if (page == MainPage.KeyboardTest)
+                {
+                    // 切回来时把上次的读数重新画上，而不是空着
+                    RenderTestStatus();
+                    // 把焦点从侧边栏的数值输入框移开，否则在这一页敲键盘会被它吃掉
+                    TestKeyboardMap.Focus();
+                }
             }
         }
 
@@ -204,6 +214,7 @@ namespace KeyboardChatterBlocker
             {
                 case MainPage.Stats: return statsPage;
                 case MainPage.Keys: return keysPage;
+                case MainPage.KeyboardTest: return keyboardTestPage;
                 case MainPage.AutoDisable: return autoDisablePage;
                 case MainPage.OtherSettings: return otherSettingsPage;
                 case MainPage.About: return aboutPage;
@@ -216,9 +227,123 @@ namespace KeyboardChatterBlocker
             navLog.Selected = _currentPage == MainPage.Log;
             navStats.Selected = _currentPage == MainPage.Stats;
             navKeys.Selected = _currentPage == MainPage.Keys;
+            navKeyboardTest.Selected = _currentPage == MainPage.KeyboardTest;
             navAutoDisable.Selected = _currentPage == MainPage.AutoDisable;
             navSettings.Selected = _currentPage == MainPage.OtherSettings;
             navAbout.Selected = _currentPage == MainPage.About;
+        }
+
+        // ============================================================
+        // 键盘测试页
+        // ============================================================
+
+        /// <summary>最近一次按下的键。</summary>
+        private Keys _testLastKey = Keys.None;
+        /// <summary>与上一次「同键」按下的间隔，毫秒；负值表示本次会话内该键还没有过上一次。</summary>
+        private long _testSameKeyMs = -1;
+        /// <summary>与上一次「任意键」按下的间隔，毫秒；负值表示还没有过上一次。</summary>
+        private long _testSinceMs = -1;
+        /// <summary>最近一次按下是否被放行。</summary>
+        private bool _testLastAllowed = true;
+        /// <summary>本次会话是否已有过按键。</summary>
+        private bool _testHasReading;
+
+        private readonly HashSet<Keys> _testDownKeys = new HashSet<Keys>();
+        private readonly Dictionary<Keys, ulong> _testLastPressOfKey = new Dictionary<Keys, ulong>();
+        private ulong _testLastPressAny;
+
+        /// <summary>
+        /// 收到任意键盘事件。
+        /// <para>
+        /// ⚠ 这个方法跑在钩子线程（= UI 线程）上、且处在输入路径中，必须尽快返回。
+        /// 这里只做数值计算与设置控件文本 —— 设置 Text 只是标脏、不会立刻同步重绘，
+        /// 所以不会把重绘开销压到输入延迟上。
+        /// </para>
+        /// </summary>
+        private void OnInterceptorKeyEvent(Keys key, bool isDown, bool allowed)
+        {
+            // 站在键盘测试页时，绝不能让侧边栏那个数值输入框把按键吃掉
+            if (_currentPage == MainPage.KeyboardTest && ChatterThresholdBox.IsEditing)
+            {
+                TestKeyboardMap.Focus();
+            }
+            if (isDown)
+            {
+                ulong now = KeyBlocker.GetTickCount64();
+                _testSameKeyMs = _testLastPressOfKey.TryGetValue(key, out ulong last) ? (long)(now - last) : -1;
+                _testSinceMs = _testLastPressAny == 0 ? -1 : (long)(now - _testLastPressAny);
+                _testLastPressOfKey[key] = now;
+                _testLastPressAny = now;
+                _testLastKey = key;
+                _testLastAllowed = allowed;
+                _testHasReading = true;
+                _testDownKeys.Add(key);
+                if (_currentPage == MainPage.KeyboardTest)
+                {
+                    RenderTestStatus();
+                }
+            }
+            else
+            {
+                _testDownKeys.Remove(key);
+                if (_currentPage == MainPage.KeyboardTest)
+                {
+                    RenderTestDownKeys();
+                }
+            }
+            TestKeyboardMap.SetKeyState(key, isDown, allowed);
+        }
+
+        /// <summary>把状态区刷新成当前记录的读数。</summary>
+        private void RenderTestStatus()
+        {
+            if (!_testHasReading)
+            {
+                TestLastKeyLabel.Text = Strings.TestNoKey;
+                TestSinceLabel.Text = Strings.TestAwaiting;
+                TestSameKeyLabel.Text = string.Empty;
+                TestVerdictLabel.Visible = false;
+            }
+            else
+            {
+                TestLastKeyLabel.Text = KeyNames.Display(_testLastKey);
+                TestSinceLabel.Text = string.Format(Strings.TestSinceLastFormat, FormatInterval(_testSinceMs));
+                TestSameKeyLabel.Text = string.Format(Strings.TestSameKeyFormat, FormatInterval(_testSameKeyMs));
+                TestVerdictLabel.Text = _testLastAllowed ? Strings.TestVerdictAllow : Strings.TestVerdictBlocked;
+                TestVerdictLabel.ForeColor = _testLastAllowed ? ThemeManager.Current.Accent : ThemeManager.Current.DangerText;
+                TestVerdictLabel.BackColor = _testLastAllowed
+                    ? Color.FromArgb(48, ThemeManager.Current.Accent)
+                    : Color.FromArgb(52, ThemeManager.Current.Danger);
+                TestVerdictLabel.Visible = true;
+            }
+            RenderTestDownKeys();
+            // 自动禁用时钩子被卸载，页面上要说明一下，免得看起来像坏了
+            TestHintLabel.Text = Program.Blocker.IsAutoDisabled
+                ? Strings.TestHint + Strings.TestHintAutoDisabled
+                : Strings.TestHint;
+        }
+
+        private static string FormatInterval(long ms)
+        {
+            return ms < 0 ? Strings.TestNoKey : ms.ToString(CultureInfo.InvariantCulture) + " ms";
+        }
+
+        /// <summary>刷新「当前按住」那一行。</summary>
+        private void RenderTestDownKeys()
+        {
+            if (_testDownKeys.Count == 0)
+            {
+                TestDownKeysLabel.Text = Strings.TestDownKeys + "：" + Strings.TestNoKey;
+                return;
+            }
+            // 按按下顺序不保证，这里按键名排序，显示才稳定
+            List<string> names = new List<string>();
+            foreach (Keys k in _testDownKeys)
+            {
+                names.Add(KeyNames.Display(k));
+            }
+            names.Sort(StringComparer.InvariantCulture);
+            TestDownKeysLabel.Text = Strings.TestDownKeys + "：" + string.Join(" + ", names);
         }
 
         // ============================================================
@@ -369,6 +494,10 @@ namespace KeyboardChatterBlocker
             {
                 Program.Blocker.Interceptor.DisableKeyboardHook();
                 Program.Blocker.Interceptor.DisableMouseHook();
+                // 钩子已卸载，收不到抬起事件了 —— 清掉键盘测试页的高亮，
+                // 否则会留下「某个键一直按着」的假象。
+                _testDownKeys.Clear();
+                TestKeyboardMap.ClearAll();
                 EnableNoteLabel.Text = $"{Strings.AutoDisablePrefix}{reason}{Strings.AutoDisableSuffix}";
                 EnableNoteLabel.ForeColor = ThemeManager.Current.DangerText;
                 EnableNoteLabel.BackColor = Color.FromArgb(52, ThemeManager.Current.Danger);

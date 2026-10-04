@@ -31,6 +31,7 @@
 | 全英文 | **简体中文** |
 | 480×407 窄窗 | 920×620，可缩放 |
 | 无 DPI 适配 | **PerMonitorV2**，自绘几何与布局统一换算 |
+| 无键盘测试 | **键盘测试页**：整张 104 键盘实时高亮 + 按键间隔读数 |
 
 ### 核心拦截逻辑
 
@@ -41,14 +42,14 @@ AcceleratedKeyMap.cs  KeysHelper.cs  FullScreenDetectHelper.cs  KBCUtils.cs  Key
 ```
 
 另外 3 个文件有改动，全部列在下面「偏离」清单里：
-`HotKeys.cs`（编译必需）、`KeyboardInterceptor.cs`（多传 2 个字段）、
+`HotKeys.cs`（编译必需）、`KeyboardInterceptor.cs`（多传 2 个字段 + 新增 KeyEvent 事件）、
 `KeyBlocker.cs`（新增「长按救援」，默认关闭）。
 
 行为完全保留：全局低级键鼠钩子、逐键阈值、最小抖动时间、按下/抬起计时、排除注入事件、
 鼠标键与滚轮抖动、临时屏蔽组合键、自动禁用程序列表、全屏自动禁用、其他键重置超时、
 系统托盘、开机自启、统计、抖动日志、提示音。
 
-### 七处必须告知的偏离
+### 八处必须告知的偏离
 
 1. **`Core/HotKeys.cs` 删除了 2 行**（`using System.Security.Permissions;` 与
    `[PermissionSet(SecurityAction.LinkDemand, Name = "FullTrust")]`）。
@@ -109,6 +110,16 @@ AcceleratedKeyMap.cs  KeysHelper.cs  FullScreenDetectHelper.cs  KBCUtils.cs  Key
    - 对应配置项 `auto_disable_foreground_only`（上游读到会忽略）。
    - 顺带的好处：「仅前台」模式下直接查询前台窗口所属进程即可，
      不再需要每 2 秒枚举一次全部进程。
+
+8. **新增「键盘测试」页** —— 纯新增功能，不改变任何既有判定。
+   实时画出整张 ANSI 104 键盘（主键区 + 导航区 + 小键盘）并高亮当前按下的键：
+   蓝色 = 已按下且放行，红色 = 已按下但被屏蔽吞掉；同时显示最近按下的键、
+   与上一次按键的间隔、与上一次**同键**按下的间隔，以及该次按下是否被放行。
+   此页**不受「启用」开关影响** —— 屏蔽关掉时同样可用（`AllowKeyDown` 会直接放行，
+   但事件照常上报）。
+   - `KeyboardInterceptor.cs` 为此新增 `KeyEvent` 事件，在上报时刻带出判定结果。
+   - 该回调处在输入路径上，因此只做数值记录与设置控件文本（设置 Text 只标脏、
+     不会同步重绘），重绘交给下一帧。
 
 ---
 
@@ -236,6 +247,7 @@ PerMonitorV2 下 WinForms 会把 `AutoScaleDimensions` 改写成当前 DPI，导
 | `Core/` 逐字节比对 | 5 个文件与上游完全一致；`HotKeys.cs` / `KeyboardInterceptor.cs` / `KeyBlocker.cs` 有上文列明的改动 |
 | 长按救援 | 被拦后按住 400ms 救回 1 次；仅按 60ms 不触发（不会凭空造出按键）；阈值为 0 时不触发 |
 | 仅前台自动禁用 | 列表程序在后台运行时不暂停屏蔽；当前台进程命中列表时暂停；开关关闭后恢复上游行为；目标退出后恢复屏蔽 |
+| 键盘测试页 | 注入按键后键盘图正确高亮（放行=蓝、被拦=红），间隔读数与判定徽标同步更新；站在该页时按键不会被侧边栏的数值输入框抢走 |
 | 合成输入可用性 | `INPUT` 结构体 40 字节；`SendInput` 返回成功，且本程序自己的钩子能收到合成事件 |
 | 新配置项往返 | `hold_rescue_time: 150` 关闭后原样写回 |
 | `config.txt` 往返 | 乱序输入 → 程序重写为规范格式，所有键值与热键、自动禁用列表完整保留 |

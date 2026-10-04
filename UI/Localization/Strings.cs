@@ -30,6 +30,7 @@ namespace KeyboardChatterBlocker.UI.Localization
         public const string NavStats = "统计";
         public const string NavKeys = "按键配置";
         public const string NavAutoDisable = "自动禁用程序";
+        public const string NavKeyboardTest = "键盘测试";
         public const string NavSettings = "其他设置";
         public const string NavAbout = "关于";
 
@@ -90,6 +91,21 @@ namespace KeyboardChatterBlocker.UI.Localization
         public const string HoldRescue = "长按救援阈值";
         public const string HoldRescueUnit = "毫秒";
         public const string HoldRescueHint = "0 = 关闭。被拦截的按下若持续超过该时长，会补发一次按键救回来。";
+
+        // —— 键盘测试 ——
+        public const string TestTitle = "键盘测试";
+        public const string TestHint = "按下任意键，这里会实时显示按键状态与间隔。此页面不受「启用」开关影响。";
+        public const string TestLastKeyCaption = "最近按下";
+        public const string TestNoKey = "—";
+        public const string TestSinceLastFormat = "距上次按键　{0}";
+        public const string TestSameKeyFormat = "同键间隔　　{0}";
+        public const string TestSameKey = "同键间隔";
+        public const string TestDownKeys = "当前按住";
+        public const string TestVerdictAllow = "放行";
+        public const string TestVerdictBlocked = "被拦下";
+        public const string TestAwaiting = "等待按键…";
+        public const string TestLegend = "蓝色 = 已按下并放行　红色 = 已按下但被屏蔽吞掉";
+        public const string TestHintAutoDisabled = "（程序当前被自动禁用，键盘钩子已卸载，此页暂时收不到按键）";
 
         // —— 关于 ——
         public const string AboutTitle = "关于";

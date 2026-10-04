@@ -10,7 +10,7 @@ namespace KeyboardChatterBlocker
     /// <summary>主界面上的页面。</summary>
     public enum MainPage
     {
-        Log, Stats, Keys, AutoDisable, OtherSettings, About
+        Log, Stats, Keys, KeyboardTest, AutoDisable, OtherSettings, About
     }
 
     partial class MainBlockerForm
@@ -29,6 +29,7 @@ namespace KeyboardChatterBlocker
         private Panel logPage;
         private Panel statsPage;
         private Panel keysPage;
+        private Panel keyboardTestPage;
         private Panel autoDisablePage;
         private Panel otherSettingsPage;
         private Panel aboutPage;
@@ -49,6 +50,7 @@ namespace KeyboardChatterBlocker
         private SideNavButton navLog;
         private SideNavButton navStats;
         private SideNavButton navKeys;
+        private SideNavButton navKeyboardTest;
         private SideNavButton navAutoDisable;
         private SideNavButton navSettings;
         private SideNavButton navAbout;
@@ -73,6 +75,15 @@ namespace KeyboardChatterBlocker
         private DataGridViewTextBoxColumn colCfgKey;
         private DataGridViewTextBoxColumn colCfgThreshold;
         private DataGridViewTextBoxColumn colCfgRemove;
+
+        // —— 键盘测试页 ——
+        public KeyboardMap TestKeyboardMap;
+        public ModernLabel TestLastKeyLabel;
+        public ModernLabel TestSinceLabel;
+        public ModernLabel TestSameKeyLabel;
+        public ModernLabel TestVerdictLabel;
+        public ModernLabel TestDownKeysLabel;
+        public ModernLabel TestHintLabel;
 
         // —— 自动禁用程序页 ——
         public ModernListView AutoDisableProgramsList;
@@ -319,13 +330,15 @@ namespace KeyboardChatterBlocker
             navLog = MakeNav(NavGlyph.Log, Strings.NavLog, 0);
             navStats = MakeNav(NavGlyph.Stats, Strings.NavStats, 1);
             navKeys = MakeNav(NavGlyph.Keys, Strings.NavKeys, 2);
-            navAutoDisable = MakeNav(NavGlyph.AutoDisable, Strings.NavAutoDisable, 3);
-            navSettings = MakeNav(NavGlyph.Settings, Strings.NavSettings, 4);
-            navAbout = MakeNav(NavGlyph.About, Strings.NavAbout, 5);
+            navKeyboardTest = MakeNav(NavGlyph.Keyboard, Strings.NavKeyboardTest, 3);
+            navAutoDisable = MakeNav(NavGlyph.AutoDisable, Strings.NavAutoDisable, 4);
+            navSettings = MakeNav(NavGlyph.Settings, Strings.NavSettings, 5);
+            navAbout = MakeNav(NavGlyph.About, Strings.NavAbout, 6);
 
             navLog.Click += (s, e) => NavigateTo(MainPage.Log);
             navStats.Click += (s, e) => NavigateTo(MainPage.Stats);
             navKeys.Click += (s, e) => NavigateTo(MainPage.Keys);
+            navKeyboardTest.Click += (s, e) => NavigateTo(MainPage.KeyboardTest);
             navAutoDisable.Click += (s, e) => NavigateTo(MainPage.AutoDisable);
             navSettings.Click += (s, e) => NavigateTo(MainPage.OtherSettings);
             navAbout.Click += (s, e) => NavigateTo(MainPage.About);
@@ -347,6 +360,7 @@ namespace KeyboardChatterBlocker
             logPage = BuildLogPage();
             statsPage = BuildStatsPage();
             keysPage = BuildKeysPage();
+            keyboardTestPage = BuildKeyboardTestPage();
             autoDisablePage = BuildAutoDisablePage();
             otherSettingsPage = BuildOtherSettingsPage();
             aboutPage = BuildAboutPage();
@@ -354,6 +368,7 @@ namespace KeyboardChatterBlocker
             contentHost.Controls.Add(aboutPage);
             contentHost.Controls.Add(otherSettingsPage);
             contentHost.Controls.Add(autoDisablePage);
+            contentHost.Controls.Add(keyboardTestPage);
             contentHost.Controls.Add(keysPage);
             contentHost.Controls.Add(statsPage);
             contentHost.Controls.Add(logPage);
@@ -418,6 +433,113 @@ namespace KeyboardChatterBlocker
             card.Controls.Add(AddKeyButton);
             AddKeyButton.BringToFront();
             card.Resize += (s, e) => PositionOverlay(AddKeyButton, card);
+
+            page.Controls.Add(card);
+            return page;
+        }
+
+        private Panel BuildKeyboardTestPage()
+        {
+            Panel page = MakePage();
+            CardPanel card = new CardPanel { Dock = DockStyle.Fill, Margin = Padding.Empty };
+
+            ModernLabel title = new ModernLabel
+            {
+                Text = Strings.TestTitle,
+                Font = Fonts.Heading,
+                Dock = DockStyle.Top,
+                Height = P(34),
+            };
+            TestHintLabel = new ModernLabel
+            {
+                Text = Strings.TestHint,
+                Font = Fonts.Small,
+                ForeColor = ThemeManager.Current.TextMuted,
+                Dock = DockStyle.Top,
+                Height = P(22),
+            };
+
+            // —— 状态区 ——
+            Panel status = new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = P(122),
+                Margin = Padding.Empty,
+                BackColor = ThemeManager.Current.CardBg,
+            };
+
+            TestLastKeyLabel = new ModernLabel
+            {
+                Text = Strings.TestNoKey,
+                Font = Fonts.Numeric,
+                Pill = true,
+                TextAlign = ContentAlignment.MiddleCenter,
+                // Pill 要有底色才画得出来（ModernLabel 只在 BackColor 非透明时渲染胶囊）
+                ForeColor = ThemeManager.Current.Accent,
+                BackColor = Color.FromArgb(48, ThemeManager.Current.Accent),
+                Location = new Point(0, P(4)),
+                Size = new Size(P(150), P(56)),
+            };
+
+            TestSinceLabel = new ModernLabel
+            {
+                Text = Strings.TestAwaiting,
+                Location = new Point(P(168), P(12)),
+                Size = new Size(P(320), P(22)),
+                TextAlign = ContentAlignment.MiddleLeft,
+            };
+            TestSameKeyLabel = new ModernLabel
+            {
+                Text = string.Empty,
+                Font = Fonts.Small,
+                ForeColor = ThemeManager.Current.TextMuted,
+                Location = new Point(P(168), P(40)),
+                Size = new Size(P(320), P(22)),
+                TextAlign = ContentAlignment.MiddleLeft,
+            };
+            TestVerdictLabel = new ModernLabel
+            {
+                Text = string.Empty,
+                Font = Fonts.Small,
+                Pill = true,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Location = new Point(P(496), P(14)),
+                Size = new Size(P(120), P(26)),
+                Visible = false,
+            };
+            TestDownKeysLabel = new ModernLabel
+            {
+                Text = Strings.TestDownKeys + "：" + Strings.TestNoKey,
+                Font = Fonts.Small,
+                ForeColor = ThemeManager.Current.TextMuted,
+                Location = new Point(0, P(76)),
+                Size = new Size(P(900), P(22)),
+                TextAlign = ContentAlignment.MiddleLeft,
+            };
+
+            status.Controls.Add(TestDownKeysLabel);
+            status.Controls.Add(TestVerdictLabel);
+            status.Controls.Add(TestSameKeyLabel);
+            status.Controls.Add(TestSinceLabel);
+            status.Controls.Add(TestLastKeyLabel);
+
+            ModernLabel legend = new ModernLabel
+            {
+                Text = Strings.TestLegend,
+                Font = Fonts.Small,
+                ForeColor = ThemeManager.Current.TextMuted,
+                Dock = DockStyle.Top,
+                Height = P(22),
+            };
+
+            TestKeyboardMap = new KeyboardMap { Dock = DockStyle.Fill };
+
+            // 添加顺序：Fill 最先（最后布局），Top 依此向上叠
+            card.Controls.Add(TestKeyboardMap);
+            card.Controls.Add(legend);
+            card.Controls.Add(status);
+            card.Controls.Add(TestHintLabel);
+            card.Controls.Add(title);
 
             page.Controls.Add(card);
             return page;

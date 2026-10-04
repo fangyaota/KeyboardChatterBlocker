@@ -8,7 +8,7 @@ namespace KeyboardChatterBlocker.UI.Controls
     /// <summary>侧边栏导航项使用的矢量图标。</summary>
     public enum NavGlyph
     {
-        Status, Log, Stats, Keys, AutoDisable, Settings, About
+        Status, Log, Stats, Keys, Keyboard, AutoDisable, Settings, About
     }
 
     /// <summary>
@@ -138,6 +138,30 @@ namespace KeyboardChatterBlocker.UI.Controls
                             for (int i = 0; i < 3; i++)
                             {
                                 g.FillEllipse(b, x + w * 0.18f + i * w * 0.28f, y + h * 0.42f, dot, dot);
+                            }
+                        }
+                        break;
+                    }
+                    case NavGlyph.Keyboard:
+                    {
+                        // 整块键盘 + 两行按键点
+                        Rectangle board = new Rectangle((int)x, (int)(y + h * 0.18f), (int)w, (int)(h * 0.64f));
+                        using (System.Drawing.Drawing2D.GraphicsPath path = Drawing.RoundedRect(board, LogicalToDeviceUnits(2)))
+                        {
+                            g.DrawPath(pen, path);
+                        }
+                        using (SolidBrush b = new SolidBrush(color))
+                        {
+                            float dot = Math.Max(1f, w * 0.09f);
+                            for (int row = 0; row < 2; row++)
+                            {
+                                for (int col = 0; col < 3; col++)
+                                {
+                                    g.FillEllipse(b,
+                                        x + w * 0.16f + col * w * 0.30f,
+                                        y + h * 0.34f + row * h * 0.22f,
+                                        dot, dot);
+                                }
                             }
                         }
                         break;

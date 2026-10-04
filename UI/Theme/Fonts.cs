@@ -1,4 +1,4 @@
-using System.Drawing;
+﻿using System.Drawing;
 using System.Drawing.Text;
 
 namespace KeyboardChatterBlocker.UI.Theme
@@ -23,6 +23,8 @@ namespace KeyboardChatterBlocker.UI.Theme
         public static readonly Font Title = new Font(Family, 10F, FontStyle.Bold, GraphicsUnit.Point);
         /// <summary>大号数值（概览卡片里的阈值）。</summary>
         public static readonly Font Numeric = new Font(Family, 14F, FontStyle.Bold, GraphicsUnit.Point);
+        /// <summary>更小号，用于键盘图上那些窄键（Home / PgUp / Num 之类）。</summary>
+        public static readonly Font Tiny = new Font(Family, 7F, FontStyle.Regular, GraphicsUnit.Point);
         /// <summary>等宽，用于日志时间戳等需要对齐的列。</summary>
         public static readonly Font Mono = new Font("Consolas", 9F, FontStyle.Regular, GraphicsUnit.Point);
 

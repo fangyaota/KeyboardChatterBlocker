@@ -71,6 +71,19 @@ namespace KeyboardChatterBlocker
         public KeyBlocker KeyBlockHandler;
 
         /// <summary>
+        /// 每一个键盘事件（按下/抬起）都会触发，带上该事件的判定结果。
+        /// <para>
+        /// 参数：按键、是否为按下、是否被放行。<b>无论屏蔽是否启用都会触发</b>，
+        /// 因此键盘测试页在程序处于停用状态时同样能工作。
+        /// </para>
+        /// <para>
+        /// ⚠ 回调跑在装钩子的线程上（本程序中即 UI 线程），且处在输入路径上，
+        /// 必须极快返回 —— 只做状态记录，不要在里面对控件做重建。
+        /// </para>
+        /// </summary>
+        public Action<Keys, bool, bool> KeyEvent;
+
+        /// <summary>
         /// The current keyboard hook ID.
         /// </summary>
         public IntPtr KeyboardHookID = IntPtr.Zero;
@@ -164,20 +177,22 @@ namespace KeyboardChatterBlocker
                         return CallNextHookEx(KeyboardHookID, nCode, wParam, lParam);
                     }
                     Keys key = (Keys)hookStruct.vkCode;
+                    bool allowed;
                     if (isDown)
                     {
                         // 一并传入扫描码与扩展位：长按救援补发时要用它们合成与真实事件等价的操作
-                        if (!KeyBlockHandler.AllowKeyDown(key, false, hookStruct.scanCode, flags.HasFlag(KBDLLHOOKSTRUCTFlags.LLKHF_EXTENDED)))
-                        {
-                            return (IntPtr)1;
-                        }
+                        allowed = KeyBlockHandler.AllowKeyDown(key, false, hookStruct.scanCode, flags.HasFlag(KBDLLHOOKSTRUCTFlags.LLKHF_EXTENDED));
                     }
                     else
                     {
-                        if (!KeyBlockHandler.AllowKeyUp(key))
-                        {
-                            return (IntPtr)1;
-                        }
+                        allowed = KeyBlockHandler.AllowKeyUp(key);
+                    }
+                    // 键盘测试页用：上报每一个事件及它的判定结果。
+                    // 放在 return 之前，因此即使屏蔽被关掉（AllowKeyDown 直接放行）也照常上报。
+                    KeyEvent?.Invoke(key, isDown, allowed);
+                    if (!allowed)
+                    {
+                        return (IntPtr)1;
                     }
                 }
             }

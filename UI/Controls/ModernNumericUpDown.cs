@@ -184,6 +184,9 @@ namespace KeyboardChatterBlocker.UI.Controls
         /// <summary>按钮区域宽度（含），供布局参考。</summary>
         public int ButtonAreaWidth => Metrics.Px(ButtonWidth);
 
+        /// <summary>内嵌的输入框当前是否持有焦点（即用户正在编辑）。</summary>
+        public bool IsEditing => _edit != null && _edit.Focused;
+
         protected override void OnPaint(PaintEventArgs e)
         {
             if (_edit == null) { return; }
