@@ -43,8 +43,6 @@ namespace KeyboardChatterBlocker
         /// 忽略大小写、固定用不变文化 —— <see cref="Program.NormalizeCulture"/> 已把当前文化锁成
         /// Invariant，用固定比较器可保证排序结果在任何机器上都一致。
         /// </summary>
-        private static readonly StringComparer KeyNameComparer = StringComparer.Create(CultureInfo.InvariantCulture, true);
-
         /// <summary>
         /// 统计页刷新间隔（毫秒）。
         /// <para>
@@ -554,24 +552,16 @@ namespace KeyboardChatterBlocker
         /// </summary>
         public void PushStatsToGrid()
         {
-            // 原版直接按 Dictionary 的遍历顺序输出，等于「首次按下的顺序」，对使用者就是乱的。
-            // 这里给一个确定的序：抖动次数多的排前面（便于定位问题键），同次数时按键名排，
-            // 保证表格不会在打字过程中自己跳来跳去。
-            List<KeyValuePair<Keys, int>> ordered = Program.Blocker.StatsKeyCount.MainDictionary
-                .OrderByDescending(kv => Program.Blocker.StatsKeyChatter[kv.Key])
-                .ThenBy(kv => KeyNames.Display(kv.Key), KeyNameComparer)
-                .ToList();
-
             StatsGrid.SuspendLayout();
             StatsGrid.Rows.Clear();
-            foreach (KeyValuePair<Keys, int> keyData in ordered)
+            foreach (KeyValuePair<Keys, int> keyData in Program.Blocker.StatsKeyCount.MainDictionary)
             {
                 int chatterTotal = Program.Blocker.StatsKeyChatter[keyData.Key];
                 string percentage = chatterTotal == 0 ? "" : ((chatterTotal * 100.0f / keyData.Value).ToString("00.00", CultureInfo.InvariantCulture) + "%");
                 StatsGrid.Rows.Add(KeyNames.Display(keyData.Key), keyData.Value, chatterTotal, percentage);
             }
             StatsGrid.ResumeLayout(true);
-            // 重建会丢掉行序，必须把用户点选的排序重新套上
+            // 行序沿用原版（Dictionary 遍历顺序）；仅在用户点过列头时才重排
             StatsGrid.ReapplySort();
         }
 
@@ -580,19 +570,18 @@ namespace KeyboardChatterBlocker
         /// </summary>
         public void PushKeysToGrid()
         {
-            // 同样按按键名排序，便于在列表里定位某个键
-            List<KeyValuePair<Keys, uint?>> ordered = Program.Blocker.KeysToChatterTime.MainDictionary
-                .Where(kv => kv.Value.HasValue)
-                .OrderBy(kv => KeyNames.Display(kv.Key), KeyNameComparer)
-                .ToList();
-
             ConfigureKeysGrid.SuspendLayout();
             ConfigureKeysGrid.Rows.Clear();
-            foreach (KeyValuePair<Keys, uint?> keyData in ordered)
+            foreach (KeyValuePair<Keys, uint?> keyData in Program.Blocker.KeysToChatterTime.MainDictionary)
             {
+                if (!keyData.Value.HasValue)
+                {
+                    continue;
+                }
                 ConfigureKeysGrid.Rows.Add(KeyNames.Display(keyData.Key), keyData.Value.Value, Strings.RemoveKey);
             }
             ConfigureKeysGrid.ResumeLayout(true);
+            // 同上：行序沿用原版，仅在用户点过列头时重排
             ConfigureKeysGrid.ReapplySort();
         }
 
