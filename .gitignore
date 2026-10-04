@@ -1,0 +1,10 @@
+# 构建产物
+bin/
+obj/
+*.user
+*.suo
+.vs/
+
+# 本程序的运行时数据（用户自己的配置与统计，不进版本库）
+config.txt
+blocker_stats.csv

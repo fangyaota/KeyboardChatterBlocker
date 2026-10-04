@@ -1,0 +1,55 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <!-- ImplicitUsings/Nullable 关闭：这是把 Core/*.cs 逐字搬运过来的前提 -->
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+
+    <RootNamespace>KeyboardChatterBlocker</RootNamespace>
+    <!-- AssemblyName 必须保持 KeyboardChatterBlocker：
+         ConfigFolder 推导、单实例进程名检测、KeyboardChatterBlocker.lnk 三处都依赖它 -->
+    <AssemblyName>KeyboardChatterBlocker</AssemblyName>
+
+    <ApplicationIcon>Assets\keyboard.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ApplicationVisualStyles>true</ApplicationVisualStyles>
+    <ApplicationUseCompatibleTextRendering>false</ApplicationUseCompatibleTextRendering>
+    <ApplicationDefaultFont>Microsoft YaHei UI, 9pt</ApplicationDefaultFont>
+
+    <Version>1.21</Version>
+    <AssemblyVersion>1.21.0.0</AssemblyVersion>
+    <FileVersion>1.21.0.0</FileVersion>
+    <InformationalVersion>1.21</InformationalVersion>
+    <!-- 否则「关于」页版本号会变成 1.21+abc1234 -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <Deterministic>true</Deterministic>
+
+    <!-- 全部界面由代码构建，不使用 WinForms 设计器，
+         因此 WFO1000（自定义控件的设计器序列化分析器）不适用，直接抑制。 -->
+    <NoWarn>$(NoWarn);WFO1000</NoWarn>
+
+    <AssemblyTitle>键盘防抖</AssemblyTitle>
+    <Product>键盘防抖 Keyboard Chatter Blocker</Product>
+    <Description>拦截机械键盘连击（chatter）的实用工具，支持逐键配置阈值。</Description>
+    <Copyright>Copyright © Frenetic LLC 2024-2025</Copyright>
+  </PropertyGroup>
+
+  <!-- 依赖运行时单文件发布（约 2MB，目标机需装 .NET 10 桌面运行时） -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <!-- EnableCompressionInSingleFile 仅支持自包含发布（NETSDK1176），此处为依赖运行时模式，故不启用 -->
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\keyboard.ico" />
+  </ItemGroup>
+
+</Project>

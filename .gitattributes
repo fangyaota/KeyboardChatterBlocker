@@ -1,0 +1,6 @@
+# 行尾统一由仓库决定，不依赖各人的 core.autocrlf 全局配置
+* text=auto
+
+# 二进制资源不做任何转换
+*.png binary
+*.ico binary

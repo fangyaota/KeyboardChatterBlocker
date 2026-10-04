@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
+  <assemblyIdentity version="1.0.0.0" name="KeyboardChatterBlocker.app" />
+
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <!-- 必须声明 Win10/11：否则 Application.SetColorMode(Dark) 与部分 DWM 行为不生效 -->
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}" />
+    </application>
+  </compatibility>
+
+  <!-- DPI 感知不在此声明：由 csproj 的 ApplicationHighDpiMode 统一配置，
+       两处同时设置会触发 WFO0003 警告且可能相互覆盖。 -->
+</assembly>
