@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Drawing;
 using System.Windows.Forms;
 using KeyboardChatterBlocker.UI.Theme;
@@ -23,8 +23,8 @@ namespace KeyboardChatterBlocker.UI.Controls
             // 关闭框架自动缩放：PerMonitorV2 下 AutoScaleDimensions 会被框架改写成当前 DPI，
             // 缩放因子因此恒为 1（控件不缩放、文字却按高 DPI 渲染）。改由 Metrics.Px 统一换算。
             AutoScaleMode = AutoScaleMode.None;
-            MinimumSize = new Size(Metrics.Px(820), Metrics.Px(560));
-            Size = new Size(Metrics.Px(920), Metrics.Px(620));
+            MinimumSize = new Size(Metrics.Px(1020), Metrics.Px(600));
+            Size = new Size(Metrics.Px(1180), Metrics.Px(700));
         }
 
         protected override CreateParams CreateParams

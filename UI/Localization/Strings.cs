@@ -1,4 +1,4 @@
-namespace KeyboardChatterBlocker.UI.Localization
+﻿namespace KeyboardChatterBlocker.UI.Localization
 {
     /// <summary>
     /// 全部界面文案。集中在此便于校对与后续增补语言。
@@ -96,9 +96,10 @@ namespace KeyboardChatterBlocker.UI.Localization
         public const string TestTitle = "键盘测试";
         public const string TestHint = "按下任意键，这里会实时显示按键状态与间隔。此页面不受「启用」开关影响。";
         public const string TestLastKeyCaption = "最近按下";
+        public const string TestVerdictCaption = "判定";
         public const string TestNoKey = "—";
-        public const string TestSinceLastFormat = "距上次按键　{0}";
-        public const string TestSameKeyFormat = "同键间隔　　{0}";
+        public const string TestSinceLastCaption = "距上次按键";
+        public const string TestSameKeyCaption = "同键间隔";
         public const string TestSameKey = "同键间隔";
         public const string TestDownKeys = "当前按住";
         public const string TestVerdictAllow = "放行";

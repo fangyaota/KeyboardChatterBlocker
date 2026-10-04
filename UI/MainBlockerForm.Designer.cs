@@ -24,6 +24,7 @@ namespace KeyboardChatterBlocker
         private CardPanel startupCard;
         private Panel navPanel;
         private Panel contentHost;
+        private Panel rightPanel;
 
         // —— 页面宿主 ——
         private Panel logPage;
@@ -139,8 +140,9 @@ namespace KeyboardChatterBlocker
             // ============ 窗口 ============
             Text = Strings.AppNameFull;
             Icon = AppIcons.App;
-            Size = new Size(P(920), P(620));
-            MinimumSize = new Size(P(820), P(560));
+            // 左右各一条 236px 边栏，默认宽度相应放宽，免得内容区被挤扁
+            Size = new Size(P(1180), P(700));
+            MinimumSize = new Size(P(1020), P(600));
             BackColor = ThemeManager.Current.WindowBg;
             ShowInTaskbar = true;
 
@@ -172,24 +174,28 @@ namespace KeyboardChatterBlocker
             bodyLayout = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
-                ColumnCount = 2,
+                ColumnCount = 3,
                 RowCount = 1,
                 BackColor = ThemeManager.Current.WindowBg,
-                           CellBorderStyle = TableLayoutPanelCellBorderStyle.None,
-            };;
+                CellBorderStyle = TableLayoutPanelCellBorderStyle.None,
+            };
             bodyLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, P(Metrics.SidebarWidth)));
             bodyLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+            bodyLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, P(Metrics.SidebarWidth)));
             bodyLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
 
             sidebarPanel = new Panel { Dock = DockStyle.Fill, Margin = Padding.Empty, BackColor = ThemeManager.Current.SidebarBg };
             contentHost = new Panel { Dock = DockStyle.Fill, Margin = Padding.Empty, BackColor = ThemeManager.Current.WindowBg };
+            rightPanel = new Panel { Dock = DockStyle.Fill, Margin = Padding.Empty, BackColor = ThemeManager.Current.SidebarBg };
 
             BuildSidebar();
             BuildPages();
+            BuildRightPanel();
 
             sidebarPanel.Controls.Add(sidebarLayout);
             bodyLayout.Controls.Add(sidebarPanel, 0, 0);
             bodyLayout.Controls.Add(contentHost, 1, 0);
+            bodyLayout.Controls.Add(rightPanel, 2, 0);
 
             Controls.Add(bodyLayout);
             Controls.Add(titleBar);
@@ -438,6 +444,89 @@ namespace KeyboardChatterBlocker
             return page;
         }
 
+        /// <summary>
+        /// 右侧常驻边栏：键盘实时读数。可收起（见 SetKeyboardPanelVisible）。
+        /// 完整键盘图在「键盘测试」页，这里只放窄栏放得下的读数。
+        /// </summary>
+        private void BuildRightPanel()
+        {
+            int pad = P(Metrics.CardPadding);
+
+            CardPanel card = new CardPanel
+            {
+                Dock = DockStyle.Fill,
+                Margin = new Padding(P(SidebarCellMargin), P(SidebarCellMargin), P(SidebarCellMargin), P(SidebarCellMargin)),
+            };
+            int inner = Metrics.SidebarWidth - SidebarCellMargin * 2 - Metrics.CardPadding * 2;
+
+            ModernLabel caption = MakeCaption(Strings.TestTitle);
+            caption.SetBounds(pad, pad - P(4), P(inner), P(18));
+
+            TestLastKeyLabel = new ModernLabel
+            {
+                Text = Strings.TestNoKey,
+                Font = Fonts.Numeric,
+                Pill = true,
+                TextAlign = ContentAlignment.MiddleCenter,
+                // Pill 要有底色才画得出来（ModernLabel 只在 BackColor 非透明时渲染胶囊）
+                ForeColor = ThemeManager.Current.Accent,
+                BackColor = Color.FromArgb(48, ThemeManager.Current.Accent),
+            };
+            TestLastKeyLabel.SetBounds(pad, pad + P(20), P(inner), P(56));
+
+            ModernLabel sinceCaption = MakeCaption(Strings.TestSinceLastCaption);
+            sinceCaption.SetBounds(pad, pad + P(84), P(inner), P(18));
+            TestSinceLabel = new ModernLabel
+            {
+                Text = Strings.TestNoKey,
+                TextAlign = ContentAlignment.MiddleLeft,
+            };
+            TestSinceLabel.SetBounds(pad, pad + P(104), P(inner), P(22));
+
+            ModernLabel sameCaption = MakeCaption(Strings.TestSameKeyCaption);
+            sameCaption.SetBounds(pad, pad + P(134), P(inner), P(18));
+            TestSameKeyLabel = new ModernLabel
+            {
+                Text = Strings.TestNoKey,
+                TextAlign = ContentAlignment.MiddleLeft,
+            };
+            TestSameKeyLabel.SetBounds(pad, pad + P(154), P(inner), P(22));
+
+            ModernLabel verdictCaption = MakeCaption(Strings.TestVerdictCaption);
+            verdictCaption.SetBounds(pad, pad + P(184), P(inner), P(18));
+            TestVerdictLabel = new ModernLabel
+            {
+                Text = Strings.TestNoKey,
+                Pill = true,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Visible = false,
+            };
+            TestVerdictLabel.SetBounds(pad, pad + P(204), P(inner), P(26));
+
+            ModernLabel downCaption = MakeCaption(Strings.TestDownKeys);
+            downCaption.SetBounds(pad, pad + P(242), P(inner), P(18));
+            TestDownKeysLabel = new ModernLabel
+            {
+                Text = Strings.TestNoKey,
+                Font = Fonts.Small,
+                TextAlign = ContentAlignment.MiddleLeft,
+            };
+            TestDownKeysLabel.SetBounds(pad, pad + P(262), P(inner), P(22));
+
+            card.Controls.Add(TestDownKeysLabel);
+            card.Controls.Add(downCaption);
+            card.Controls.Add(TestVerdictLabel);
+            card.Controls.Add(verdictCaption);
+            card.Controls.Add(TestSameKeyLabel);
+            card.Controls.Add(sameCaption);
+            card.Controls.Add(TestSinceLabel);
+            card.Controls.Add(sinceCaption);
+            card.Controls.Add(TestLastKeyLabel);
+            card.Controls.Add(caption);
+
+            rightPanel.Controls.Add(card);
+        }
+
         private Panel BuildKeyboardTestPage()
         {
             Panel page = MakePage();
@@ -458,71 +547,6 @@ namespace KeyboardChatterBlocker
                 Dock = DockStyle.Top,
                 Height = P(22),
             };
-
-            // —— 状态区 ——
-            Panel status = new Panel
-            {
-                Dock = DockStyle.Top,
-                Height = P(122),
-                Margin = Padding.Empty,
-                BackColor = ThemeManager.Current.CardBg,
-            };
-
-            TestLastKeyLabel = new ModernLabel
-            {
-                Text = Strings.TestNoKey,
-                Font = Fonts.Numeric,
-                Pill = true,
-                TextAlign = ContentAlignment.MiddleCenter,
-                // Pill 要有底色才画得出来（ModernLabel 只在 BackColor 非透明时渲染胶囊）
-                ForeColor = ThemeManager.Current.Accent,
-                BackColor = Color.FromArgb(48, ThemeManager.Current.Accent),
-                Location = new Point(0, P(4)),
-                Size = new Size(P(150), P(56)),
-            };
-
-            TestSinceLabel = new ModernLabel
-            {
-                Text = Strings.TestAwaiting,
-                Location = new Point(P(168), P(12)),
-                Size = new Size(P(320), P(22)),
-                TextAlign = ContentAlignment.MiddleLeft,
-            };
-            TestSameKeyLabel = new ModernLabel
-            {
-                Text = string.Empty,
-                Font = Fonts.Small,
-                ForeColor = ThemeManager.Current.TextMuted,
-                Location = new Point(P(168), P(40)),
-                Size = new Size(P(320), P(22)),
-                TextAlign = ContentAlignment.MiddleLeft,
-            };
-            TestVerdictLabel = new ModernLabel
-            {
-                Text = string.Empty,
-                Font = Fonts.Small,
-                Pill = true,
-                TextAlign = ContentAlignment.MiddleCenter,
-                Location = new Point(P(496), P(14)),
-                Size = new Size(P(120), P(26)),
-                Visible = false,
-            };
-            TestDownKeysLabel = new ModernLabel
-            {
-                Text = Strings.TestDownKeys + "：" + Strings.TestNoKey,
-                Font = Fonts.Small,
-                ForeColor = ThemeManager.Current.TextMuted,
-                Location = new Point(0, P(76)),
-                Size = new Size(P(900), P(22)),
-                TextAlign = ContentAlignment.MiddleLeft,
-            };
-
-            status.Controls.Add(TestDownKeysLabel);
-            status.Controls.Add(TestVerdictLabel);
-            status.Controls.Add(TestSameKeyLabel);
-            status.Controls.Add(TestSinceLabel);
-            status.Controls.Add(TestLastKeyLabel);
-
             ModernLabel legend = new ModernLabel
             {
                 Text = Strings.TestLegend,
@@ -532,12 +556,11 @@ namespace KeyboardChatterBlocker
                 Height = P(22),
             };
 
+            // 本页只放完整键盘图；实时读数在右侧常驻边栏里（窄栏放不下一整张键盘，两者互补）
             TestKeyboardMap = new KeyboardMap { Dock = DockStyle.Fill };
 
-            // 添加顺序：Fill 最先（最后布局），Top 依此向上叠
             card.Controls.Add(TestKeyboardMap);
             card.Controls.Add(legend);
-            card.Controls.Add(status);
             card.Controls.Add(TestHintLabel);
             card.Controls.Add(title);
 

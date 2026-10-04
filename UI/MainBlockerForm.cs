@@ -145,10 +145,15 @@ namespace KeyboardChatterBlocker
             // 键盘测试页需要每一个键盘事件，而不只是被拦下的那些。
             // 放在 InitializeComponent 之后订阅，确保 TestKeyboardMap 已经建好。
             Program.Interceptor.KeyEvent += OnInterceptorKeyEvent;
+            titleBar.PanelToggle += () => SetKeyboardPanelVisible(!_keyboardPanelVisible);
+            SetKeyboardPanelVisible(true);
             versionAboutLabel.Text = string.Format(Strings.AboutVersionFormat, Application.ProductVersion);
             EnableEdgeResize(this);
             Load += MainBlockerForm_Load;
             FormClosing += MainBlockerForm_FormClosing;
+            // 必须在 Shown 之后再做一次：Load 触发时窗体还没显示，焦点尚未分配，
+            // 那时 IsEditing 还是 false，什么都拦不到。
+            Shown += (s, e) => BlurThresholdBox();
         }
 
         /// <summary>
@@ -195,15 +200,18 @@ namespace KeyboardChatterBlocker
             target.Visible = true;
             _currentPage = page;
             UpdateNavSelection();
+            BlurThresholdBox();
             if (!Loading)
             {
                 PushStatsToGrid();
                 if (page == MainPage.KeyboardTest)
                 {
-                    // 切回来时把上次的读数重新画上，而不是空着
-                    RenderTestStatus();
                     // 把焦点从侧边栏的数值输入框移开，否则在这一页敲键盘会被它吃掉
                     TestKeyboardMap.Focus();
+                    // 自动禁用时钩子被卸载，页面上要说明一下，免得看起来像坏了
+                    TestHintLabel.Text = Program.Blocker.IsAutoDisabled
+                        ? Strings.TestHint + Strings.TestHintAutoDisabled
+                        : Strings.TestHint;
                 }
             }
         }
@@ -231,6 +239,57 @@ namespace KeyboardChatterBlocker
             navAutoDisable.Selected = _currentPage == MainPage.AutoDisable;
             navSettings.Selected = _currentPage == MainPage.OtherSettings;
             navAbout.Selected = _currentPage == MainPage.About;
+        }
+
+        // ============================================================
+        // 右侧键盘读数边栏
+        // ============================================================
+
+        /// <summary>右侧键盘读数边栏当前是否展开。</summary>
+        private bool _keyboardPanelVisible = true;
+
+        /// <summary>
+        /// 把焦点从侧边栏的数值输入框移开。
+        /// <para>
+        /// 它是界面上唯一常驻的文本输入，启动时会自动抢到焦点 —— 于是用户在这个
+        /// 键盘工具里随便敲什么，字符都会跑进阈值框里。必须在启动后和每次换页时
+        /// 主动把焦点让出来。
+        /// </para>
+        /// </summary>
+        private void BlurThresholdBox()
+        {
+            if (ChatterThresholdBox == null || !ChatterThresholdBox.IsEditing)
+            {
+                return;
+            }
+            try
+            {
+                ActiveControl = null;
+            }
+            catch (Exception)
+            {
+                // 个别情况下不允许置空
+            }
+            if (ChatterThresholdBox.IsEditing)
+            {
+                // 兜底：把焦点交给窗体自身，总好过让它留在输入框里
+                try { Focus(); } catch (Exception) { }
+            }
+        }
+
+        /// <summary>展开/收起右侧键盘读数边栏。</summary>
+        public void SetKeyboardPanelVisible(bool visible)
+        {
+            if (rightPanel == null)
+            {
+                return;
+            }
+            _keyboardPanelVisible = visible;
+            rightPanel.Visible = visible;
+            // 列宽必须一起改 —— 只设 Visible 的话那一列仍然占着位置
+            bodyLayout.ColumnStyles[2].Width = visible ? Metrics.Px(Metrics.SidebarWidth) : 0;
+            titleBar.PanelToggleActive = visible;
+            PerformLayout();
         }
 
         // ============================================================
@@ -262,7 +321,7 @@ namespace KeyboardChatterBlocker
         /// </summary>
         private void OnInterceptorKeyEvent(Keys key, bool isDown, bool allowed)
         {
-            // 站在键盘测试页时，绝不能让侧边栏那个数值输入框把按键吃掉
+            // 站在键盘测试页时，按键更要优先给键盘图
             if (_currentPage == MainPage.KeyboardTest && ChatterThresholdBox.IsEditing)
             {
                 TestKeyboardMap.Focus();
@@ -278,18 +337,13 @@ namespace KeyboardChatterBlocker
                 _testLastAllowed = allowed;
                 _testHasReading = true;
                 _testDownKeys.Add(key);
-                if (_currentPage == MainPage.KeyboardTest)
-                {
-                    RenderTestStatus();
-                }
+                // 读数在右侧常驻边栏里，所以无论当前在哪一页都要刷新
+                RenderTestStatus();
             }
             else
             {
                 _testDownKeys.Remove(key);
-                if (_currentPage == MainPage.KeyboardTest)
-                {
-                    RenderTestDownKeys();
-                }
+                RenderTestDownKeys();
             }
             TestKeyboardMap.SetKeyState(key, isDown, allowed);
         }
@@ -307,8 +361,8 @@ namespace KeyboardChatterBlocker
             else
             {
                 TestLastKeyLabel.Text = KeyNames.Display(_testLastKey);
-                TestSinceLabel.Text = string.Format(Strings.TestSinceLastFormat, FormatInterval(_testSinceMs));
-                TestSameKeyLabel.Text = string.Format(Strings.TestSameKeyFormat, FormatInterval(_testSameKeyMs));
+                TestSinceLabel.Text = FormatInterval(_testSinceMs);
+                TestSameKeyLabel.Text = FormatInterval(_testSameKeyMs);
                 TestVerdictLabel.Text = _testLastAllowed ? Strings.TestVerdictAllow : Strings.TestVerdictBlocked;
                 TestVerdictLabel.ForeColor = _testLastAllowed ? ThemeManager.Current.Accent : ThemeManager.Current.DangerText;
                 TestVerdictLabel.BackColor = _testLastAllowed
@@ -317,10 +371,6 @@ namespace KeyboardChatterBlocker
                 TestVerdictLabel.Visible = true;
             }
             RenderTestDownKeys();
-            // 自动禁用时钩子被卸载，页面上要说明一下，免得看起来像坏了
-            TestHintLabel.Text = Program.Blocker.IsAutoDisabled
-                ? Strings.TestHint + Strings.TestHintAutoDisabled
-                : Strings.TestHint;
         }
 
         private static string FormatInterval(long ms)
@@ -333,7 +383,7 @@ namespace KeyboardChatterBlocker
         {
             if (_testDownKeys.Count == 0)
             {
-                TestDownKeysLabel.Text = Strings.TestDownKeys + "：" + Strings.TestNoKey;
+                TestDownKeysLabel.Text = Strings.TestNoKey;
                 return;
             }
             // 按按下顺序不保证，这里按键名排序，显示才稳定
@@ -343,7 +393,7 @@ namespace KeyboardChatterBlocker
                 names.Add(KeyNames.Display(k));
             }
             names.Sort(StringComparer.InvariantCulture);
-            TestDownKeysLabel.Text = Strings.TestDownKeys + "：" + string.Join(" + ", names);
+            TestDownKeysLabel.Text = string.Join(" + ", names);
         }
 
         // ============================================================
@@ -668,6 +718,7 @@ namespace KeyboardChatterBlocker
             PushKeysToGrid();
             Loading = false;
             NavigateTo(MainPage.Log);
+            BlurThresholdBox();
             CheckAutoDisable();
         }
 
