@@ -166,7 +166,8 @@ namespace KeyboardChatterBlocker
                     Keys key = (Keys)hookStruct.vkCode;
                     if (isDown)
                     {
-                        if (!KeyBlockHandler.AllowKeyDown(key, false))
+                        // 一并传入扫描码与扩展位：长按救援补发时要用它们合成与真实事件等价的操作
+                        if (!KeyBlockHandler.AllowKeyDown(key, false, hookStruct.scanCode, flags.HasFlag(KBDLLHOOKSTRUCTFlags.LLKHF_EXTENDED)))
                         {
                             return (IntPtr)1;
                         }

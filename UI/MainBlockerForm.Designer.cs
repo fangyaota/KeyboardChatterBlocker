@@ -90,6 +90,12 @@ namespace KeyboardChatterBlocker
         public ModernCheckBox SaveStatsCheckbox;
         public ModernCheckBox OtherKeyResetsCheckbox;
 
+        // —— 长按救援 ——
+        public ModernNumericUpDown HoldRescueBox;
+        private ModernLabel holdRescueCaption;
+        private ModernLabel holdRescueUnit;
+        private ModernLabel holdRescueHint;
+
         // —— 关于页 ——
         public LinkLabel AboutLinkLabel;
         public ModernLabel versionAboutLabel;
@@ -539,14 +545,15 @@ namespace KeyboardChatterBlocker
             {
                 Dock = DockStyle.Fill,
                 ColumnCount = 1,
-                RowCount = 5,
+                RowCount = 6,
                 BackColor = ThemeManager.Current.CardBg,
-                           CellBorderStyle = TableLayoutPanelCellBorderStyle.None,
-            };;
+                CellBorderStyle = TableLayoutPanelCellBorderStyle.None,
+            };
             stack.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
             stack.RowStyles.Add(new RowStyle(SizeType.Absolute, P(34)));   // 标题
             stack.RowStyles.Add(new RowStyle(SizeType.Absolute, P(24)));   // 提示
             stack.RowStyles.Add(new RowStyle(SizeType.Absolute, P(80)));   // 计时起点
+            stack.RowStyles.Add(new RowStyle(SizeType.Absolute, P(86)));   // 长按救援
             stack.RowStyles.Add(new RowStyle(SizeType.Absolute, P(112)));  // 复选框组
             stack.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
 
@@ -601,6 +608,69 @@ namespace KeyboardChatterBlocker
             measureRow.Controls.Add(measureCaption, 0, 0);
             measureRow.Controls.Add(measureRight, 1, 0);
 
+            // —— 长按救援 ——
+            TableLayoutPanel holdRescueRow = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 2,
+                RowCount = 1,
+                BackColor = ThemeManager.Current.CardBg,
+                CellBorderStyle = TableLayoutPanelCellBorderStyle.None,
+            };
+            holdRescueRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, P(90)));
+            holdRescueRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+            holdRescueRow.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
+
+            // 不用 Dock=Fill：那会让文字在整行高度里居中，与顶部的数值框错位
+            holdRescueCaption = new ModernLabel
+            {
+                Text = Strings.HoldRescue,
+                TextAlign = ContentAlignment.MiddleLeft,
+                Location = new Point(0, P(4)),
+                Size = new Size(P(90), P(Metrics.InputHeight)),
+                Anchor = AnchorStyles.Top | AnchorStyles.Left,
+            };
+
+            Panel holdRescueRight = new Panel { Dock = DockStyle.Fill, BackColor = ThemeManager.Current.CardBg };
+            HoldRescueBox = new ModernNumericUpDown
+            {
+                Minimum = 0,
+                Maximum = 2000,
+                Increment = 10,
+                Value = 0,
+                Location = new Point(0, P(4)),
+                Size = new Size(P(120), P(Metrics.InputHeight)),
+            };
+            HoldRescueBox.ValueChanged += HoldRescueBox_ValueChanged;
+
+            holdRescueUnit = new ModernLabel
+            {
+                Text = Strings.HoldRescueUnit,
+                Font = Fonts.Small,
+                ForeColor = ThemeManager.Current.TextMuted,
+                Location = new Point(P(128), P(4)),
+                Size = new Size(P(60), P(Metrics.InputHeight)),
+                TextAlign = ContentAlignment.MiddleLeft,
+            };
+
+            // 提示单独占一行 —— 和数值框挤在同一行时会被截断
+            holdRescueHint = new ModernLabel
+            {
+                Text = Strings.HoldRescueHint,
+                Font = Fonts.Small,
+                ForeColor = ThemeManager.Current.TextMuted,
+                Location = new Point(0, P(46)),
+                Size = new Size(P(600), P(22)),
+                TextAlign = ContentAlignment.MiddleLeft,
+            };
+            holdRescueRight.Controls.Add(holdRescueHint);
+            holdRescueRight.Controls.Add(holdRescueUnit);
+            holdRescueRight.Controls.Add(HoldRescueBox);
+            holdRescueRight.Resize += (s, e) => holdRescueHint.Width = System.Math.Max(P(200), holdRescueRight.Width);
+
+            holdRescueRow.Controls.Add(holdRescueCaption, 0, 0);
+            holdRescueRow.Controls.Add(holdRescueRight, 1, 0);
+
             // —— 复选框组 ——
             // 用「直接堆叠」而非 TableLayoutPanel：后者会给每个单元格画 1px 灰色分隔线，
             // 在深色主题下尤其突兀。
@@ -646,7 +716,8 @@ namespace KeyboardChatterBlocker
             stack.Controls.Add(title, 0, 0);
             stack.Controls.Add(hint, 0, 1);
             stack.Controls.Add(measureRow, 0, 2);
-            stack.Controls.Add(checks, 0, 3);
+            stack.Controls.Add(holdRescueRow, 0, 3);
+            stack.Controls.Add(checks, 0, 4);
             card.Controls.Add(stack);
 
             page.Controls.Add(card);

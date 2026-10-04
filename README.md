@@ -1,4 +1,4 @@
-# 键盘防抖 (Keyboard Chatter Blocker · 现代化中文界面重写)
+﻿# 键盘防抖 (Keyboard Chatter Blocker · 现代化中文界面重写)
 
 拦截机械键盘**连击（chatter）**的 Windows 工具 —— 按一次却触发多次的问题。
 核心能力是**为每个问题按键单独配置阈值**，让坏键被压制的同时其余按键保持灵敏。
@@ -32,20 +32,23 @@
 | 480×407 窄窗 | 920×620，可缩放 |
 | 无 DPI 适配 | **PerMonitorV2**，自绘几何与布局统一换算 |
 
-### 核心逻辑（未改动）
+### 核心拦截逻辑
 
-`Core/` 下的 7 个文件与上游**逐字节一致**：
+误判策略、判定的输入输出、状态表结构、配置文件格式全部保留。其中 **5 个文件与上游逐字节一致**：
 
 ```
-KeyBlocker.cs  KeyboardInterceptor.cs  AcceleratedKeyMap.cs  KeysHelper.cs
-FullScreenDetectHelper.cs  KBCUtils.cs  KeyBlockedEventArgs.cs
+AcceleratedKeyMap.cs  KeysHelper.cs  FullScreenDetectHelper.cs  KBCUtils.cs  KeyBlockedEventArgs.cs
 ```
+
+另外 3 个文件有改动，全部列在下面「偏离」清单里：
+`HotKeys.cs`（编译必需）、`KeyboardInterceptor.cs`（多传 2 个字段）、
+`KeyBlocker.cs`（新增「长按救援」，默认关闭）。
 
 行为完全保留：全局低级键鼠钩子、逐键阈值、最小抖动时间、按下/抬起计时、排除注入事件、
 鼠标键与滚轮抖动、临时屏蔽组合键、自动禁用程序列表、全屏自动禁用、其他键重置超时、
 系统托盘、开机自启、统计、抖动日志、提示音。
 
-### 五处必须告知的偏离
+### 六处必须告知的偏离
 
 1. **`Core/HotKeys.cs` 删除了 2 行**（`using System.Security.Permissions;` 与
    `[PermissionSet(SecurityAction.LinkDemand, Name = "FullTrust")]`）。
@@ -82,6 +85,21 @@ FullScreenDetectHelper.cs  KBCUtils.cs  KeyBlockedEventArgs.cs
    —— 否则「按下次数」会排成 `100, 30, 50, 80`。
 
    **未点列头时不施加任何排序**，行序与原版一致（`Dictionary` 的遍历顺序）。
+
+6. **新增「长按救援」，默认关闭** —— 这是唯一一处改动到拦截逻辑本身的功能。
+   - 动机：一次按下被拦下时钩子返回 `1`，这个 down **根本不会进入系统**。
+     后果远不止少一次按键 —— 系统不认为该键被按下，就不会产生键盘自动重复，
+     消息驱动的游戏在整个长按期间都收不到它，要等约 500ms 的系统重复才可能恢复。
+   - 做法：被拦下时挂一个待救援标记；若该键持续按住超过「长按救援阈值」，
+     说明它其实是一次长按、而非抖动的短促连击，此时补发一次等价的 keydown 把它救回来。
+   - 补发用**扫描码 + 扩展位**（都取自真实的那个事件）而不是虚拟键码 ——
+     DirectInput / Raw Input 类游戏读的是扫描码，只带 `vkCode` 的合成事件会被忽略。
+   - 阈值在「其他设置」页可调（`0` = 关闭）。对应配置项 `hold_rescue_time`；
+     上游程序读到这一行会直接忽略，因此 `config.txt` 仍可双向通用。
+   - 涉及文件：新增 `Core/KeySynth.cs`（合成输入），`KeyBlocker.cs` 与
+     `KeyboardInterceptor.cs` 相应改动。
+   - **风险**：这属于合成输入。部分游戏（尤其带反作弊的）会丢弃合成事件；
+     它也是本项目里唯一会主动往输入流写数据的地方，所以默认关闭。
 
 ---
 
@@ -131,8 +149,12 @@ auto_disable_on_fullscreen: false
 other_key_resets_timeout: false
 exclude_injected: false
 
+hold_rescue_time: 150
+
 hotkey_toggle: ctrl + alt + shift + F9
 ```
+
+> `hold_rescue_time` 是本版新增项。上游程序读到会忽略，所以同一份 config.txt 两边都能用。
 
 ---
 
@@ -163,8 +185,12 @@ KeyboardChatterBlocker/
 ├─ KeyboardChatterBlocker.csproj    SDK 风格工程（net10.0-windows）
 ├─ app.manifest                     仅声明 Win10/11 兼容性
 ├─ Program.cs                       入口（Initialize 顺序有讲究，见注释）
-├─ Core/                            ⊘ 与上游逐字节一致，勿改
-│   └─ HotKeys.cs                   唯一例外（见上文偏离 1）
+├─ Core/
+│   ├─ AcceleratedKeyMap.cs  等 5 个  ⊘ 与上游逐字节一致
+│   ├─ HotKeys.cs                   仅删 2 行（见偏离 1）
+│   ├─ KeyboardInterceptor.cs       多传扫描码/扩展位（见偏离 6）
+│   ├─ KeyBlocker.cs                新增长按救援（见偏离 6）
+│   └─ KeySynth.cs                  新增：合成输入
 ├─ Assets/keyboard.ico              应用图标 + 托盘图标
 └─ UI/
     ├─ MainBlockerForm.cs           事件处理层（与原版逐条对齐）
@@ -197,7 +223,10 @@ PerMonitorV2 下 WinForms 会把 `AutoScaleDimensions` 改写成当前 DPI，导
 
 | 项 | 结果 |
 |---|---|
-| `Core/` 逐字节比对 | 7 个文件全部一致，仅 `HotKeys.cs` 有预期的 2 行差异 |
+| `Core/` 逐字节比对 | 5 个文件与上游完全一致；`HotKeys.cs` / `KeyboardInterceptor.cs` / `KeyBlocker.cs` 有上文列明的改动 |
+| 长按救援 | 被拦后按住 400ms 救回 1 次；仅按 60ms 不触发（不会凭空造出按键）；阈值为 0 时不触发 |
+| 合成输入可用性 | `INPUT` 结构体 40 字节；`SendInput` 返回成功，且本程序自己的钩子能收到合成事件 |
+| 新配置项往返 | `hold_rescue_time: 150` 关闭后原样写回 |
 | `config.txt` 往返 | 乱序输入 → 程序重写为规范格式，所有键值与热键、自动禁用列表完整保留 |
 | `blocker_stats.csv` 往返 | 格式与尾随逗号保留；`mouse_left` 行在加载时被丢弃 —— 这是**上游未修改代码的既有行为**，未做「顺手修复」 |
 | 单文件发布 | 依赖运行时模式 480 KB，可直接运行 |

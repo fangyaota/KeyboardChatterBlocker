@@ -84,6 +84,11 @@ namespace KeyboardChatterBlocker.UI.Localization
         public const string OtherKeysReset = "其他按键按下时重置计时";
         public const string OtherKeysResetHint = "快速连续输入不同按键时，把它们视为正常输入而非抖动。";
 
+        // —— 长按救援（本版新增功能）——
+        public const string HoldRescue = "长按救援阈值";
+        public const string HoldRescueUnit = "毫秒";
+        public const string HoldRescueHint = "0 = 关闭。被拦截的按下若持续超过该时长，会补发一次按键救回来。";
+
         // —— 关于 ——
         public const string AboutTitle = "关于";
         public const string AboutAuthor = "由 Alex \"mcmonkey\" Goodwin 与 Frenetic LLC 开发";

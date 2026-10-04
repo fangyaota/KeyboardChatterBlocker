@@ -226,6 +226,10 @@ namespace KeyboardChatterBlocker
                 case "exclude_injected":
                     ExcludeInjected = SettingAsBool(settingValue);
                     break;
+                // 本版新增。上游程序读到这一行会直接忽略（switch 里没有对应分支），因此配置文件仍可双向通用。
+                case "hold_rescue_time":
+                    HoldRescueTime = uint.Parse(settingValue);
+                    break;
             }
         }
 
@@ -283,6 +287,7 @@ namespace KeyboardChatterBlocker
             result.Append("auto_disable_on_fullscreen: ").Append(AutoDisableOnFullscreen ? "true" : "false").Append("\n");
             result.Append("other_key_resets_timeout: ").Append(OtherKeyResetsTimeout ? "true" : "false").Append("\n");
             result.Append("exclude_injected: ").Append(ExcludeInjected ? "true" : "false").Append("\n");
+            result.Append("hold_rescue_time: ").Append(HoldRescueTime).Append("\n");
             result.Append("\n");
             foreach (KeyValuePair<string, string> pair in Hotkeys)
             {
@@ -354,6 +359,88 @@ namespace KeyboardChatterBlocker
         /// A mapping of keys to a bool indicating whether a down-stroke was blocked (so the up-stroke can be blocked as well).
         /// </summary>
         public AcceleratedKeyMap<bool> KeysWereDownBlocked = new AcceleratedKeyMap<bool>();
+
+        // ==================== 长按救援（本版新增，非上游逻辑） ====================
+        //
+        // 动机：一次按下被判定为抖动而拦截时，钩子返回 1，这个 keydown 根本不会进入系统。
+        // 后果远不止「少一次按键」——系统不认为该键被按下，因此不会产生键盘自动重复，
+        // 消息驱动的游戏在整个长按期间都收不到这个键。等系统自动重复来救场要 ~500ms。
+        //
+        // 做法：被拦下时挂一个「待救援」标记；若该键持续按住超过 HoldRescueTime，
+        // 说明它其实是一次长按（而非抖动的短促连击），此时补发一次等价的 keydown 把它救回来。
+        // 补发用扫描码 + 扩展位，与真实事件等价，DirectInput/Raw Input 类游戏也能收到。
+
+        /// <summary>
+        /// 长按救援阈值，单位毫秒。<c>0</c> 表示关闭该功能（默认值，保持与上游一致的行为）。
+        /// </summary>
+        public uint HoldRescueTime = 0;
+
+        /// <summary>等待救援的按键列表（仅在 <see cref="HoldRescueTime"/> 大于 0 时非空）。</summary>
+        private readonly List<Keys> PendingRescues = new List<Keys>();
+
+        /// <summary>各按键的救援触发时刻（GetTickCount64 时间轴）。</summary>
+        private readonly AcceleratedKeyMap<ulong> KeysRescueDeadline = new AcceleratedKeyMap<ulong>();
+
+        /// <summary>被拦下时该按键的扫描码与扩展位，用于合成等价事件。</summary>
+        private readonly AcceleratedKeyMap<uint> KeysRescueScanCode = new AcceleratedKeyMap<uint>();
+
+        private readonly AcceleratedKeyMap<bool> KeysRescueExtended = new AcceleratedKeyMap<bool>();
+
+        /// <summary>是否有待救援的按键。供 UI 决定要不要启动高频定时器，避免常驻空转。</summary>
+        public bool HasPendingRescue => PendingRescues.Count > 0;
+
+        /// <summary>累计成功补发的次数，供统计与排查。</summary>
+        public int RescueCount = 0;
+
+        /// <summary>
+        /// 扫一遍待救援列表，把「确实在长按」的按键补发回去。
+        /// <para>
+        /// <b>必须在装钩子的那个线程上调用</b>（本程序中即 UI 线程）。
+        /// 这样对 <see cref="KeyIsDown"/> 的读取才不会与按键事件竞争 ——
+        /// 否则可能出现「判定时还按着、补发时已松开」，凭空制造一个卡住的键。
+        /// </para>
+        /// </summary>
+        public void ProcessHoldRescue()
+        {
+            if (PendingRescues.Count == 0)
+            {
+                return;
+            }
+            if (!IsEnabled || IsAutoDisabled || TempDisable)
+            {
+                // 屏蔽已被关掉/自动关掉，就不该再补发任何按键
+                PendingRescues.Clear();
+                return;
+            }
+            ulong now = GetTickCount64();
+            for (int i = PendingRescues.Count - 1; i >= 0; i--)
+            {
+                Keys key = PendingRescues[i];
+                if (!KeysRescueDeadline[key].Equals(0) && now < KeysRescueDeadline[key])
+                {
+                    continue; // 还没到判定时刻
+                }
+                PendingRescues.RemoveAt(i);
+                // 已经松开、或被别的途径放行了 —— 都不该再补发
+                if (!KeyIsDown[key])
+                {
+                    continue;
+                }
+                if (KeySynth.KeyDown(KeysRescueScanCode[key], KeysRescueExtended[key]))
+                {
+                    RescueCount++;
+                }
+            }
+        }
+
+        /// <summary>取消某个按键的待救援标记（松开时调用）。</summary>
+        private void ClearPendingRescue(Keys key)
+        {
+            if (PendingRescues.Count > 0)
+            {
+                PendingRescues.Remove(key);
+            }
+        }
 
         /// <summary>
         /// A mapping of keys to total press count, for statistics tracking.
@@ -480,7 +567,7 @@ namespace KeyboardChatterBlocker
         /// <param name="key">The key being pressed.</param>
         /// <param name="defaultZero">If true, defaults to zero instead of <see cref="GlobalChatterTimeLimit"/>.</param>
         /// <returns>True to allow the press, false to deny it.</returns>
-        public bool AllowKeyDown(Keys key, bool defaultZero)
+        public bool AllowKeyDown(Keys key, bool defaultZero, uint scanCode = 0, bool extended = false)
         {
             if (!IsEnabled || IsAutoDisabled || TempDisable) // Not enabled = allow everything through.
             {
@@ -533,6 +620,15 @@ namespace KeyboardChatterBlocker
             // All else = not enough time elapsed, deny it.
             StatsKeyChatter[key]++;
             KeysWereDownBlocked[key] = true;
+            // 挂上待救援标记：若这次其实是长按，ProcessHoldRescue 会把它补发回去。
+            // 只对键盘键生效（鼠标伪键的码值 >= 256，且没有扫描码可言）。
+            if (HoldRescueTime > 0 && (int)key < 256 && !PendingRescues.Contains(key))
+            {
+                KeysRescueScanCode[key] = scanCode;
+                KeysRescueExtended[key] = extended;
+                KeysRescueDeadline[key] = timeNow + HoldRescueTime;
+                PendingRescues.Add(key);
+            }
             KeyBlockedEvent?.Invoke(new KeyBlockedEventArgs() { Key = key, Time = (uint)timePassed });
             PlayNotification();
             return false;
@@ -546,6 +642,8 @@ namespace KeyboardChatterBlocker
         public bool AllowKeyUp(Keys key)
         {
             ulong timeNow = GetTickCount64();
+            // 键已经松开，无论走哪条分支都不该再补发
+            ClearPendingRescue(key);
             if (!IsEnabled || IsAutoDisabled || TempDisable) // Not enabled = allow everything through.
             {
                 KeysToLastReleaseTime[key] = timeNow;

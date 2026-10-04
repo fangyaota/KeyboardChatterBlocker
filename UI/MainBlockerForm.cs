@@ -56,6 +56,19 @@ namespace KeyboardChatterBlocker
         /// <summary>上次把 <c>SaveStatsTicker</c> 加一的时间，用于把自动保存计时与刷新频率解耦。</summary>
         private DateTime _lastStatsSaveTick = DateTime.UtcNow;
 
+        /// <summary>
+        /// 长按救援的轮询定时器。
+        /// <para>
+        /// 只在对钩子线程无害的前提下才可能要求高频：它平时是<b>停着</b>的，
+        /// 仅在拦下按键后、到该键松开之间才运行（通常几十毫秒），
+        /// 所以常态下不会给输入路径增加任何负担。
+        /// </para>
+        /// </summary>
+        private Timer HoldRescueTimer;
+
+        /// <summary>救援轮询的粒度。越小判定越准，代价是这段时间内的唤醒次数。</summary>
+        private const int HoldRescueTickMs = 20;
+
         /// <summary>Shows the form fully and properly.</summary>
         public void ShowForm()
         {
@@ -149,6 +162,12 @@ namespace KeyboardChatterBlocker
                 KeyNames.Display(e.Key),
                 e.Time,
                 Strings.CellEdit);
+            // 有按键被拦下 → 立刻启动长按救援轮询。该定时器平时是停着的，只在有待救援按键时才跑，
+            // 因此不会给钩子线程增加常态负担。
+            if (HoldRescueTimer != null && !HoldRescueTimer.Enabled && Program.Blocker.HasPendingRescue)
+            {
+                HoldRescueTimer.Start();
+            }
             // 追加的行同样要落进用户选的排序里（未排序时该调用零开销）
             ChatterLogGrid.ReapplySort();
             if (wasScrolledToBottom && ChatterLogGrid.RowCount > 0)
@@ -472,6 +491,16 @@ namespace KeyboardChatterBlocker
             StatsUpdateTimer = new Timer { Interval = StatsRefreshIntervalMs };
             StatsUpdateTimer.Tick += StatsUpdateTimer_Tick;
             StatsUpdateTimer.Start();
+            HoldRescueTimer = new Timer { Interval = HoldRescueTickMs };
+            HoldRescueTimer.Tick += (tickSender, tickArgs) =>
+            {
+                Program.Blocker.ProcessHoldRescue();
+                if (!Program.Blocker.HasPendingRescue)
+                {
+                    HoldRescueTimer.Stop();
+                }
+            };
+            HoldRescueBox.Value = Program.Blocker.HoldRescueTime;
             PushKeysToGrid();
             Loading = false;
             NavigateTo(MainPage.Log);
@@ -953,6 +982,20 @@ namespace KeyboardChatterBlocker
                 return;
             }
             Program.Blocker.ExcludeInjected = ExcludeInjectedCheckbox.Checked;
+            Program.Blocker.SaveConfig();
+        }
+
+        /// <summary>
+        /// Event method to handle the 'hold rescue' threshold box changing.
+        /// 0 = 关闭该功能。
+        /// </summary>
+        private void HoldRescueBox_ValueChanged(object sender, EventArgs e)
+        {
+            if (Loading)
+            {
+                return;
+            }
+            Program.Blocker.HoldRescueTime = (uint)HoldRescueBox.Value;
             Program.Blocker.SaveConfig();
         }
     }
