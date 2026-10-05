@@ -49,7 +49,7 @@ AcceleratedKeyMap.cs  KeysHelper.cs  FullScreenDetectHelper.cs  KBCUtils.cs  Key
 鼠标键与滚轮抖动、临时屏蔽组合键、自动禁用程序列表、全屏自动禁用、其他键重置超时、
 系统托盘、开机自启、统计、抖动日志、提示音。
 
-### 十处必须告知的偏离
+### 十一处必须告知的偏离
 
 1. **`Core/HotKeys.cs` 删除了 2 行**（`using System.Security.Permissions;` 与
    `[PermissionSet(SecurityAction.LinkDemand, Name = "FullTrust")]`）。
@@ -166,6 +166,32 @@ AcceleratedKeyMap.cs  KeysHelper.cs  FullScreenDetectHelper.cs  KBCUtils.cs  Key
     > 直接调 `Focus()`，所以按钮照样能拿到焦点。要三件事一起做：关 `Selectable`、
     > 拿到焦点立刻让给下一个控件、再吞掉空格与回车。
 
+11. **让钩子始终待在钩子链最前面** —— 修复「先开本程序、后开游戏 → 拦不住」。纯 UI 层改动，
+    `Core/` 一字未动。
+
+    Windows 的钩子链是**后装的先被调用**，而且**任何一个钩子返回非 0 就截断整条链**。
+    有些游戏自己就装了低级键盘钩子（A Dance of Fire and Ice 实测有三个组件这么做：
+    `Assembly-CSharp-firstpass.dll` 里的 `SetWindowsHookEx` + `WH_KEYBOARD_LL`、
+    `Rewired_Windows.dll`、`SkyHook.Unity.dll`）。游戏若在本程序**之后**启动，
+    它的钩子就排在本程序前面 —— 一旦它吞掉按键不往下传，本程序根本收不到按键，
+    也就无从拦截。
+
+    现象很有辨识度：**先把游戏开好再开本程序（或中途重启一次本程序）就正常，
+    反过来就不行**。
+
+    对策：`SetWindowsHookEx` 永远把新钩子插到链首，所以**重装一次**就能抢回最前面。
+    `UI/HookKeeper.cs` 在前台窗口切换时重装（游戏切到前台那一刻正是要抢的时候），
+    600ms 后再补一次（有的游戏是拿到前台之后才装自己的钩子），另有 5 秒兜底。
+
+    > 副作用：本程序会始终占据链首，其他键盘工具（如 PowerToys Keyboard Manager）
+    > 排在它之后收到按键。平时本程序原样往下传，所以它们照常工作；
+    > 只有判定为抖动并吞掉的那一次，它们才看不到。
+
+    > 验证方式值得一提：在测试进程里再装一个「恶意」钩子（吞掉按键且不调
+    > `CallNextHookEx`）来模拟抢先的游戏 —— 它装得晚所以排在链首，
+    > 此时本程序读自己的拦截计数，确认**完全收不到按键**；调用重装后，
+    > 计数恢复增长。一个实验同时证明了病因和药效。
+
 ---
 
 ## 下载与运行
@@ -242,6 +268,10 @@ hotkey_toggle: ctrl + alt + shift + F9
 - 部分反作弊系统可能将其判定为可疑程序（上游 README 提到过 VAC 误封案例）。
 - 与部分越南语输入法（EVKey、Unikey）存在冲突，它们会发送特殊键码。
 - 高 DPI 缩放在**程序启动时**确定；运行中把窗口拖到不同缩放的显示器不会重新排版。
+- **装在内核态读 HID 的反作弊系统拦不住**（输入不经过用户态钩子链）。见上文第 11 条 ——
+  用户态范围内能做到的都做了（含 Raw Input，已实测）。
+- 本程序会占据键盘钩子链首位，其他键盘工具（PowerToys 等）排在它之后。平时原样往下传，
+  只有判定为抖动才吞，所以一般无感（见第 11 条）。
 
 ---
 
@@ -300,6 +330,8 @@ PerMonitorV2 下 WinForms 会把 `AutoScaleDimensions` 改写成当前 DPI，导
 | 间隔 1 秒上限 | 按 `A` → 停 1.5 秒 → 再按 `A`：总按键数=2，平均间隔显示「—」（长间隔未进样本）；再隔约 450ms 按一次，平均间隔=453ms（短间隔正常计入） |
 | 表格屏蔽键盘 | 「抖动日志」「统计」两页：`Focusable=False`、`CanSelect=False`、`Focus()` 返回 false；真实鼠标点击后焦点不在表格上；`WM_MOUSEWHEEL` 仍能滚动（首行 0 → 9） |
 | 开机自启的归属判定 | 启动项指向 `D:\KeyboardChatterBlocker.exe`、而程序跑在别处时：不勾 + 方块标记；自建 .lnk 指向本 exe → 判为自己，指向记事本 → 不是自己，文件不存在 → 读出 null |
+| 钩子链被截断 | 测试进程内再装一个「恶意」钩子（吞掉按键且不调 `CallNextHookEx`）后，快速连按 4 次测试键 → 本程序拦截计数 **0 → 0**（完全收不到）；调用重装后 → **0 → 2**（恢复拦截） |
+| 真实游戏（A Dance of Fire and Ice） | 「先开本程序、后开游戏」这个原本失败的顺序，改用带抢链首的构建后抖动消失（用户实测） |
 | 右侧读数边栏 | 读数随按键实时更新；收起后内容区自动填满，标题栏开关的颜色跟随状态变化（展开=强调色、收起=灰） |
 | 关闭到托盘 | 走真实 ✕ 路径（`Form.Close()`）时 `CloseReason=UserClosing, Cancel=True`，窗口隐藏且托盘图标出现；`close_to_tray: false` 时正常退出；与 `hide_in_system_tray` 互相独立 |
 | 输入焦点 | 启动后及每次换页都会把焦点从侧边栏阈值框让开 —— 否则在这个键盘工具里随便敲什么都会跑进阈值框 |

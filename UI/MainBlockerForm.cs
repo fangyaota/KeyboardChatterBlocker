@@ -873,6 +873,8 @@ namespace KeyboardChatterBlocker
             RefreshStartWithWindowsState();
             OtherKeyResetsCheckbox.Checked = Program.Blocker.OtherKeyResetsTimeout;
             ExcludeInjectedCheckbox.Checked = Program.Blocker.ExcludeInjected;
+            // 让钩子尽量待在链首：有些游戏自带低级键盘钩子，且会截断钩子链
+            HookKeeper.Start();
             StatsUpdateTimer = new Timer { Interval = StatsRefreshIntervalMs };
             StatsUpdateTimer.Tick += StatsUpdateTimer_Tick;
             StatsUpdateTimer.Start();
