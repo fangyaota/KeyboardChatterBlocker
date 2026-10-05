@@ -81,6 +81,12 @@ namespace KeyboardChatterBlocker
         // —— 键盘测试页 ——
         public KeyboardMap TestKeyboardMap;
         public ModernButton TestClearMarksButton;
+        public ModernLabel TestStatusLabel;
+        public ModernLabel TestTotalPressesLabel;
+        public ModernLabel TestChatterEventsLabel;
+        public ModernLabel TestAvgIntervalLabel;
+        public ModernLabel TestMinIntervalLabel;
+        public ModernLabel TestThresholdLabel;
         public ModernLabel TestLastKeyLabel;
         public ModernLabel TestSinceLabel;
         public ModernLabel TestSameKeyLabel;
@@ -572,15 +578,15 @@ namespace KeyboardChatterBlocker
             TestKeyboardMap = new KeyboardMap { Dock = DockStyle.Fill };
 
             card.Controls.Add(TestKeyboardMap);
+            card.Controls.Add(BuildTestStatsPanel());
             card.Controls.Add(legend);
             card.Controls.Add(TestHintLabel);
             card.Controls.Add(title);
 
             TestClearMarksButton = new ModernButton
             {
-                Text = string.Format(Strings.TestClearMarksFormat, 0),
-                Size = new Size(P(150), P(Metrics.ButtonHeight)),
-                Enabled = false,
+                Text = Strings.TestReset,
+                Size = new Size(P(110), P(Metrics.ButtonHeight)),
             };
             TestClearMarksButton.Click += TestClearMarksButton_Click;
             card.Controls.Add(TestClearMarksButton);
@@ -589,6 +595,87 @@ namespace KeyboardChatterBlocker
 
             page.Controls.Add(card);
             return page;
+        }
+
+        /// <summary>
+        /// 键盘测试页顶部的汇总指标：状态、总按键数、抖动事件、平均间隔、最小间隔、
+        /// 当前全局阈值。参考 abctester.net 那个键盘连击测试工具的指标集。
+        /// </summary>
+        private Panel BuildTestStatsPanel()
+        {
+            TableLayoutPanel grid = new TableLayoutPanel
+            {
+                Dock = DockStyle.Top,
+                Height = P(96),
+                ColumnCount = 5,
+                RowCount = 3,
+                Margin = Padding.Empty,
+                BackColor = ThemeManager.Current.CardBg,
+                CellBorderStyle = TableLayoutPanelCellBorderStyle.None,
+            };
+            for (int i = 0; i < 5; i++)
+            {
+                grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 20f));
+            }
+            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, P(30)));   // 状态行
+            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, P(22)));   // 标题行
+            grid.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));     // 数值行
+
+            TestStatusLabel = new ModernLabel
+            {
+                Text = Strings.TestStatStatusGood,
+                Font = Fonts.BodyBold,
+                ForeColor = ThemeManager.Current.Success,
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft,
+            };
+            grid.Controls.Add(TestStatusLabel, 0, 0);
+            grid.SetColumnSpan(TestStatusLabel, 5);
+
+            string[] captions =
+            {
+                Strings.TestStatTotalPresses,
+                Strings.TestStatChatterEvents,
+                Strings.TestStatAvgInterval,
+                Strings.TestStatMinInterval,
+                Strings.TestStatThreshold,
+            };
+            ModernLabel[] values = new ModernLabel[5];
+            for (int i = 0; i < 5; i++)
+            {
+                ModernLabel cap = new ModernLabel
+                {
+                    Text = captions[i],
+                    Font = Fonts.Small,
+                    ForeColor = ThemeManager.Current.TextMuted,
+                    Dock = DockStyle.Fill,
+                    TextAlign = ContentAlignment.MiddleLeft,
+                };
+                values[i] = new ModernLabel
+                {
+                    Text = Strings.TestStatNoData,
+                    Font = Fonts.BodyBold,
+                    Dock = DockStyle.Fill,
+                    TextAlign = ContentAlignment.MiddleLeft,
+                };
+                grid.Controls.Add(cap, i, 1);
+                grid.Controls.Add(values[i], i, 2);
+            }
+            TestTotalPressesLabel = values[0];
+            TestChatterEventsLabel = values[1];
+            TestAvgIntervalLabel = values[2];
+            TestMinIntervalLabel = values[3];
+            TestThresholdLabel = values[4];
+
+            Panel wrap = new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = P(104),
+                Margin = Padding.Empty,
+                BackColor = ThemeManager.Current.CardBg,
+            };
+            wrap.Controls.Add(grid);
+            return wrap;
         }
 
         private Panel BuildAutoDisablePage()

@@ -95,7 +95,7 @@
 
         // —— 键盘测试 ——
         public const string TestTitle = "键盘测试";
-        public const string TestHint = "按下任意键，这里会实时显示按键状态与间隔。此页面不受「启用」开关影响。";
+        public const string TestHint = "按下任意键即可开始测试。此页面不受「启用」开关影响；间隔统计基于同一按键的连续两次按下。";
         public const string TestLastKeyCaption = "最近按下";
         public const string TestVerdictCaption = "判定";
         public const string TestNoKey = "—";
@@ -108,6 +108,15 @@
         public const string TestAwaiting = "等待按键…";
         public const string TestLegend = "蓝色 = 已按下并放行　红色 = 已按下但被屏蔽吞掉　红框 = 曾被拦下过";
         public const string TestClearMarksFormat = "清除标记 ({0})";
+        public const string TestReset = "重置";
+        public const string TestStatStatusGood = "✅ 良好 — 未检测到按键抖动";
+        public const string TestStatStatusBad = "⚠ 检测到 {0} 次抖动，相关按键已在键盘图上标红";
+        public const string TestStatTotalPresses = "总按键数";
+        public const string TestStatChatterEvents = "抖动事件";
+        public const string TestStatAvgInterval = "平均间隔";
+        public const string TestStatMinInterval = "最小间隔";
+        public const string TestStatThreshold = "全局抖动阈值";
+        public const string TestStatNoData = "—";
         public const string TestHintAutoDisabled = "（程序当前被自动禁用，键盘钩子已卸载，此页暂时收不到按键）";
 
         // —— 关于 ——

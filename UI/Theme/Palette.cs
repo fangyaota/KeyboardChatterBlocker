@@ -1,4 +1,4 @@
-using System.Drawing;
+﻿using System.Drawing;
 
 namespace KeyboardChatterBlocker.UI.Theme
 {
@@ -29,6 +29,10 @@ namespace KeyboardChatterBlocker.UI.Theme
         public Color AccentText;
         /// <summary>强调色的低透明度衬底（用于选中项背景、徽标底色）。</summary>
         public Color AccentSoft;
+
+        // —— 成功色（键盘测试的「良好」状态）——
+        public Color Success;
+        public Color SuccessSoft;
 
         // —— 危险色（自动禁用提示等）——
         public Color Danger;
@@ -73,6 +77,9 @@ namespace KeyboardChatterBlocker.UI.Theme
                 AccentText = Hex(0xFFFFFF),
                 AccentSoft = Hex(0x22304A),
 
+                Success = Hex(0x3FB950),
+                SuccessSoft = Hex(0x1B3226),
+
                 Danger = Hex(0xFF5C5C),
                 DangerSoft = Hex(0x45262A),
                 DangerText = Hex(0xFFA0A0),
@@ -114,6 +121,9 @@ namespace KeyboardChatterBlocker.UI.Theme
                 AccentPressed = Hex(0x1D4FD8),
                 AccentText = Hex(0xFFFFFF),
                 AccentSoft = Hex(0xDCE9FF),
+
+                Success = Hex(0x1A7F37),
+                SuccessSoft = Hex(0xE6F4EA),
 
                 Danger = Hex(0xDC2626),
                 DangerSoft = Hex(0xFEE9E9),

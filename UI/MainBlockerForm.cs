@@ -307,8 +307,17 @@ namespace KeyboardChatterBlocker
         /// <summary>本次会话是否已有过按键。</summary>
         private bool _testHasReading;
 
-        /// <summary>上次刷进按钮文本的标记数量，用来避免每次按键都重设文本。</summary>
-        private int _lastBlockedMarkCount = -1;
+        // —— 本次测试的汇总统计（参考 abctester.net 的键盘连击测试工具）——
+        /// <summary>总按键数，只计新按下（键盘自动重复不计）。</summary>
+        private long _testTotalPresses;
+        /// <summary>被判定为抖动而拦下的次数。</summary>
+        private long _testChatterEvents;
+        /// <summary>同键间隔的累计值，用于算平均。</summary>
+        private long _testIntervalSumMs;
+        /// <summary>产生了同键间隔的样本数。</summary>
+        private long _testIntervalCount;
+        /// <summary>最小的同键间隔。</summary>
+        private long _testMinIntervalMs = long.MaxValue;
 
         private readonly HashSet<Keys> _testDownKeys = new HashSet<Keys>();
         private readonly Dictionary<Keys, ulong> _testLastPressOfKey = new Dictionary<Keys, ulong>();
@@ -339,6 +348,24 @@ namespace KeyboardChatterBlocker
                 _testLastKey = key;
                 _testLastAllowed = allowed;
                 _testHasReading = true;
+                // 只统计「新按下」—— 把键盘自动重复排掉，否则按住一个键数字就飞了
+                if (!_testDownKeys.Contains(key))
+                {
+                    _testTotalPresses++;
+                    if (_testSameKeyMs >= 0)
+                    {
+                        _testIntervalSumMs += _testSameKeyMs;
+                        _testIntervalCount++;
+                        if (_testSameKeyMs < _testMinIntervalMs)
+                        {
+                            _testMinIntervalMs = _testSameKeyMs;
+                        }
+                    }
+                }
+                if (!allowed)
+                {
+                    _testChatterEvents++;
+                }
                 _testDownKeys.Add(key);
                 // 读数在右侧常驻边栏里，所以无论当前在哪一页都要刷新
                 RenderTestStatus();
@@ -349,7 +376,6 @@ namespace KeyboardChatterBlocker
                 RenderTestDownKeys();
             }
             TestKeyboardMap.SetKeyState(key, isDown, allowed);
-            UpdateTestMarkCount();
         }
 
         /// <summary>把状态区刷新成当前记录的读数。</summary>
@@ -375,26 +401,54 @@ namespace KeyboardChatterBlocker
                 TestVerdictLabel.Visible = true;
             }
             RenderTestDownKeys();
+            RenderTestStats();
         }
 
-        /// <summary>把「曾经被拦下」的键数刷进按钮，并决定它是否可点。</summary>
-        private void UpdateTestMarkCount()
+        /// <summary>刷新键盘测试页顶部那一行汇总指标。</summary>
+        private void RenderTestStats()
         {
-            int n = TestKeyboardMap.BlockedMarkCount;
-            if (n == _lastBlockedMarkCount)
+            TestStatusLabel.Text = _testChatterEvents == 0
+                ? Strings.TestStatStatusGood
+                : string.Format(Strings.TestStatStatusBad, _testChatterEvents);
+            TestStatusLabel.ForeColor = _testChatterEvents == 0
+                ? ThemeManager.Current.Success
+                : ThemeManager.Current.Danger;
+
+            TestTotalPressesLabel.Text = _testTotalPresses.ToString(CultureInfo.InvariantCulture);
+            TestChatterEventsLabel.Text = _testChatterEvents.ToString(CultureInfo.InvariantCulture);
+            TestChatterEventsLabel.ForeColor = _testChatterEvents == 0
+                ? ThemeManager.Current.Text
+                : ThemeManager.Current.Danger;
+
+            if (_testIntervalCount == 0)
             {
-                return;
+                TestAvgIntervalLabel.Text = Strings.TestStatNoData;
+                TestMinIntervalLabel.Text = Strings.TestStatNoData;
             }
-            _lastBlockedMarkCount = n;
-            TestClearMarksButton.Text = string.Format(Strings.TestClearMarksFormat, n);
-            TestClearMarksButton.Enabled = n > 0;
+            else
+            {
+                TestAvgIntervalLabel.Text = (_testIntervalSumMs / _testIntervalCount).ToString(CultureInfo.InvariantCulture) + " ms";
+                TestMinIntervalLabel.Text = _testMinIntervalMs.ToString(CultureInfo.InvariantCulture) + " ms";
+            }
+            TestThresholdLabel.Text = Program.Blocker.GlobalChatterTimeLimit.ToString(CultureInfo.InvariantCulture) + " ms";
         }
 
-        /// <summary>清除键盘图上的红色标记，便于开始下一轮测试。</summary>
+        /// <summary>
+        /// 重置本次测试：清掉键盘图上的红色标记与高亮，并把统计数据归零。
+        /// </summary>
         private void TestClearMarksButton_Click(object sender, EventArgs e)
         {
             TestKeyboardMap.ClearBlockedMarks();
-            UpdateTestMarkCount();
+            TestKeyboardMap.ClearAll();
+            _testTotalPresses = 0;
+            _testChatterEvents = 0;
+            _testIntervalSumMs = 0;
+            _testIntervalCount = 0;
+            _testMinIntervalMs = long.MaxValue;
+            _testHasReading = false;
+            _testLastPressOfKey.Clear();
+            _testLastPressAny = 0;
+            RenderTestStatus();
         }
 
         private static string FormatInterval(long ms)
