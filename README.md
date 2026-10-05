@@ -330,11 +330,13 @@ close_to_tray: true
 
 hold_rescue_time: 150
 always_on_top: false
+show_keyboard_panel: true
 
 hotkey_toggle: ctrl + alt + shift + F9
 ```
 
-> `hold_rescue_time`、`always_on_top`、`enabled_keyboards`、`key.<短id>.<键名>` 都是本版新增项。
+> `hold_rescue_time`、`always_on_top`、`show_keyboard_panel`、`enabled_keyboards`、
+> `key.<短id>.<键名>` 都是本版新增项。
 > 上游程序读到会忽略（它的解析器认不出这些名字），所以同一份 config.txt 两边都能用。
 
 ---
@@ -360,7 +362,8 @@ hotkey_toggle: ctrl + alt + shift + F9
   用户态范围内能做到的都做了（含 Raw Input，已实测）。
 - 本程序会占据键盘钩子链首位，其他键盘工具（PowerToys 等）排在它之后。平时原样往下传，
   只有判定为抖动才吞，所以一般无感（见第 11 条）。
-- 标题栏的「置顶」按钮（图钉）会把窗口强制最上层，状态写进 `always_on_top`，重开仍生效。
+- 标题栏右侧两个开关**都是持久化的**：置顶按钮写 `always_on_top`，边栏开关写
+  `show_keyboard_panel`，重开程序都会还原。
 - **键盘设备白名单会多起一个同名进程**（无窗口，`--device-tracker`），
   跟着主进程生灭。跨键盘切换后的第一次按键可能被判到上一把上（见第 12 条）。
 

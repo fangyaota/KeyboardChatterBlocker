@@ -151,7 +151,8 @@ namespace KeyboardChatterBlocker
                 ApplyAlwaysOnTop(!TopMost);
                 Program.Blocker.SaveConfig();   // 置顶是「设一次就一直想要」的偏好，记下来
             };
-            SetKeyboardPanelVisible(true);
+            // 套用配置里的边栏状态，别回写（persist: false）
+            SetKeyboardPanelVisible(Program.Blocker.ShowKeyboardPanel, false);
             versionAboutLabel.Text = string.Format(Strings.AboutVersionFormat, Application.ProductVersion);
             EnableEdgeResize(this);
             Load += MainBlockerForm_Load;
@@ -346,7 +347,11 @@ namespace KeyboardChatterBlocker
         }
 
         /// <summary>展开/收起右侧键盘读数边栏。</summary>
-        public void SetKeyboardPanelVisible(bool visible)
+        /// <param name="persist">
+        /// 是否把这次状态写回配置。启动时套用配置要走 <c>persist: false</c>，
+        /// 否则会把刚读出来的值又原样写一遍。
+        /// </param>
+        public void SetKeyboardPanelVisible(bool visible, bool persist = true)
         {
             if (rightPanel == null)
             {
@@ -358,6 +363,11 @@ namespace KeyboardChatterBlocker
             bodyLayout.ColumnStyles[2].Width = visible ? Metrics.Px(Metrics.SidebarWidth) : 0;
             titleBar.PanelToggleActive = visible;
             PerformLayout();
+            if (persist)
+            {
+                Program.Blocker.ShowKeyboardPanel = visible;
+                Program.Blocker.SaveConfig();
+            }
         }
 
         // ============================================================

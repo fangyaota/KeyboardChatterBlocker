@@ -209,6 +209,9 @@ namespace KeyboardChatterBlocker
                 case "always_on_top":
                     AlwaysOnTop = SettingAsBool(settingValue);
                     break;
+                case "show_keyboard_panel":
+                    ShowKeyboardPanel = SettingAsBool(settingValue);
+                    break;
                 case "close_to_tray":
                     CloseToTray = SettingAsBool(settingValue);
                     break;
@@ -350,6 +353,7 @@ namespace KeyboardChatterBlocker
             result.Append("hold_rescue_time: ").Append(HoldRescueTime).Append("\n");
             result.Append("close_to_tray: ").Append(CloseToTray ? "true" : "false").Append("\n");
             result.Append("always_on_top: ").Append(AlwaysOnTop ? "true" : "false").Append("\n");
+            result.Append("show_keyboard_panel: ").Append(ShowKeyboardPanel ? "true" : "false").Append("\n");
             result.Append("\n");
             foreach (KeyValuePair<string, string> pair in Hotkeys)
             {
@@ -658,6 +662,9 @@ namespace KeyboardChatterBlocker
 
         /// <summary>窗口是否强制最上层显示（标题栏上的图钉按钮）。</summary>
         public bool AlwaysOnTop = false;
+
+        /// <summary>右侧键盘读数边栏是否展开（标题栏上的边栏开关）。</summary>
+        public bool ShowKeyboardPanel = true;
 
         /// <summary>
         /// 自动禁用程序列表的判定方式（本版新增，默认 true）。
