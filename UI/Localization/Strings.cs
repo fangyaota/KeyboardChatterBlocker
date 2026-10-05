@@ -33,6 +33,7 @@
         public const string NavStats = "统计";
         public const string NavKeys = "按键配置";
         public const string NavAutoDisable = "自动禁用程序";
+        public const string NavKeyboardDevices = "键盘设备";
         public const string NavKeyboardTest = "键盘测试";
         public const string NavSettings = "其他设置";
         public const string NavAbout = "关于";
@@ -94,6 +95,16 @@
         public const string HoldRescue = "长按救援阈值";
         public const string HoldRescueUnit = "毫秒";
         public const string HoldRescueHint = "0 = 关闭。被拦截的按下若持续超过该时长，会补发一次按键救回来。";
+
+        // —— 键盘设备（本版新增功能）——
+        public const string DevicesTitle = "键盘设备";
+        public const string DevicesHint = "只有勾选的键盘会参与抖动拦截。全部勾选 = 所有键盘（默认）。";
+        // 注意：ModernLabel 不处理换行，多行文案会被渲染成一整行 —— 这里的文案都写成单行
+        public const string DevicesEmpty = "还没有识别到任何键盘 —— 按下任意键，用到的那个键盘就会出现在这里。";
+        public const string DevicesIdentify = "识别";
+        public const string DevicesIdentifyArmed = "请按一下要识别的那把键盘…";
+        public const string DevicesIdentifiedFormat = "刚按的是「{0}」";
+        public const string DevicesNote = "设备名是系统给的机器码；切换键盘后的第一次按键可能被判到上一把键盘上，之后立刻纠正。";
 
         // —— 键盘测试 ——
         public const string TestTitle = "键盘测试";

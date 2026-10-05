@@ -171,6 +171,10 @@ namespace KeyboardChatterBlocker
                 case "auto_disable_programs":
                     AutoDisablePrograms.AddRange(settingValue.ToLowerInvariant().Split('/'));
                     break;
+                // 本版新增。上游程序读到这一行会忽略（switch 里没有对应分支）。
+                case "enabled_keyboards":
+                    EnabledKeyboards.AddRange(settingValue.ToLowerInvariant().Split('/'));
+                    break;
                 case "auto_disable_on_fullscreen":
                     AutoDisableOnFullscreen = SettingAsBool(settingValue);
                     break;
@@ -292,6 +296,11 @@ namespace KeyboardChatterBlocker
                 result.Append("auto_disable_programs: ").Append(string.Join("/", AutoDisablePrograms)).Append("\n");
             }
             result.Append("auto_disable_on_fullscreen: ").Append(AutoDisableOnFullscreen ? "true" : "false").Append("\n");
+            // 列表为空（= 所有键盘）时不写这一行，配置文件和默认行为都保持干净
+            if (EnabledKeyboards.Count > 0)
+            {
+                result.Append("enabled_keyboards: ").Append(string.Join("/", EnabledKeyboards)).Append("\n");
+            }
             result.Append("auto_disable_foreground_only: ").Append(AutoDisableForegroundOnly ? "true" : "false").Append("\n");
             result.Append("other_key_resets_timeout: ").Append(OtherKeyResetsTimeout ? "true" : "false").Append("\n");
             result.Append("exclude_injected: ").Append(ExcludeInjected ? "true" : "false").Append("\n");
@@ -338,6 +347,15 @@ namespace KeyboardChatterBlocker
         /// A set of program executable names that will cause the blocker to automatically disable if they are open.
         /// </summary>
         public List<string> AutoDisablePrograms = new List<string>();
+
+        /// <summary>
+        /// 参与抖动拦截的键盘设备路径（Raw Input 的设备名，见 <c>UI/KeyboardDevices.cs</c>）。
+        /// <para><b>为空 = 所有键盘都参与拦截</b>，这也是默认行为。</para>
+        /// <para>
+        /// 存的是设备路径而不是句柄：句柄每次开机都会变，路径才稳定（含 VID/PID）。
+        /// </para>
+        /// </summary>
+        public List<string> EnabledKeyboards = new List<string>();
 
         /// <summary>
         /// A mapping of keys to the last press time.

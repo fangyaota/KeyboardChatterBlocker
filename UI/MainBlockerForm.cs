@@ -223,6 +223,7 @@ namespace KeyboardChatterBlocker
                 case MainPage.Stats: return statsPage;
                 case MainPage.Keys: return keysPage;
                 case MainPage.KeyboardTest: return keyboardTestPage;
+                case MainPage.KeyboardDevices: return keyboardDevicesPage;
                 case MainPage.AutoDisable: return autoDisablePage;
                 case MainPage.OtherSettings: return otherSettingsPage;
                 case MainPage.About: return aboutPage;
@@ -236,6 +237,7 @@ namespace KeyboardChatterBlocker
             navStats.Selected = _currentPage == MainPage.Stats;
             navKeys.Selected = _currentPage == MainPage.Keys;
             navKeyboardTest.Selected = _currentPage == MainPage.KeyboardTest;
+            navKeyboardDevices.Selected = _currentPage == MainPage.KeyboardDevices;
             navAutoDisable.Selected = _currentPage == MainPage.AutoDisable;
             navSettings.Selected = _currentPage == MainPage.OtherSettings;
             navAbout.Selected = _currentPage == MainPage.About;
@@ -875,6 +877,12 @@ namespace KeyboardChatterBlocker
             ExcludeInjectedCheckbox.Checked = Program.Blocker.ExcludeInjected;
             // 让钩子尽量待在链首：有些游戏自带低级键盘钩子，且会截断钩子链
             HookKeeper.Start();
+            // 键盘设备白名单：设备识别跑在独立进程里（KeyboardDevices 只是读者），
+            // 主进程自己不注册 Raw Input —— 否则会把自己的键盘钩子弄哑，见 KeyboardDevices 的说明。
+            KeyboardDevices.DevicesChanged += RebuildDeviceRows;
+            Program.Interceptor.CurrentDeviceAllowed = KeyboardDevices.IsCurrentDeviceEnabled;
+            KeyboardDevices.Start();
+            RebuildDeviceRows();
             StatsUpdateTimer = new Timer { Interval = StatsRefreshIntervalMs };
             StatsUpdateTimer.Tick += StatsUpdateTimer_Tick;
             StatsUpdateTimer.Start();
@@ -1402,6 +1410,161 @@ namespace KeyboardChatterBlocker
             }
             Program.Blocker.ExcludeInjected = ExcludeInjectedCheckbox.Checked;
             Program.Blocker.SaveConfig();
+        }
+
+        // ============================================================
+        // 键盘设备白名单
+        // ============================================================
+
+        /// <summary>「识别」按钮是否处于待识别状态：下一次按键会被高亮出来。</summary>
+        private bool _identifying;
+
+        /// <summary>当前高亮的设备行（识别用），换行/超时后要复位。</summary>
+        private Panel _highlightedDeviceRow;
+
+        /// <summary>
+        /// 重建设备行。设备只在第一次被按到时才出现，数量很少（个位数），
+        /// 所以每次变化整套重建，省掉增删同步的麻烦。
+        /// </summary>
+        private void RebuildDeviceRows()
+        {
+            if (DevicesListPanel == null)
+            {
+                return;
+            }
+            _highlightedDeviceRow = null;
+            DevicesListPanel.SuspendLayout();
+            DevicesListPanel.Controls.Clear();
+
+            IList<KeyboardDevice> devices = KeyboardDevices.Active;
+            if (devices.Count == 0)
+            {
+                DevicesListPanel.Controls.Add(new ModernLabel
+                {
+                    Text = Strings.DevicesEmpty,
+                    Font = Fonts.Body,
+                    ForeColor = ThemeManager.Current.TextMuted,
+                    Dock = DockStyle.Top,
+                    Height = P(48),
+                });
+                DevicesListPanel.ResumeLayout();
+                return;
+            }
+            // Dock=Top 是「后加的排在上面」，所以倒着加，显示顺序才和列表一致
+            for (int i = devices.Count - 1; i >= 0; i--)
+            {
+                KeyboardDevice device = devices[i];
+                Panel row = new Panel
+                {
+                    Dock = DockStyle.Top,
+                    Height = P(30),
+                    BackColor = ThemeManager.Current.CardBg,
+                };
+
+                ModernCheckBox box = new ModernCheckBox
+                {
+                    Text = device.Label,
+                    Dock = DockStyle.Fill,
+                    // 全部勾选时白名单是空的（= 所有键盘），所以这里的「勾上」要按那个语义解释
+                    Checked = IsKeyboardEnabled(device),
+                };
+                string path = device.Path;
+                box.CheckedChanged += (s, e) => OnDeviceCheckChanged(path, box.Checked);
+
+                row.Controls.Add(box);
+                DevicesListPanel.Controls.Add(row);
+            }
+
+            DevicesListPanel.ResumeLayout();
+        }
+
+        /// <summary>
+        /// 某把键盘是否参与拦截。白名单为空 = 所有键盘都参与（默认）。
+        /// </summary>
+        private static bool IsKeyboardEnabled(KeyboardDevice device)
+        {
+            List<string> enabled = Program.Blocker.EnabledKeyboards;
+            return enabled.Count == 0 || enabled.Contains(device.Path);
+        }
+
+        /// <summary>
+        /// 勾选变化写回配置。
+        /// <para>
+        /// 全选时**清空列表**而不是把每把都列进去 —— 保持「空 = 所有键盘」这一个语义，
+        /// 以后插了新键盘也不用重新勾。也因此每次都按当前的「实际参与集合」重算。
+        /// </para>
+        /// </summary>
+        private void OnDeviceCheckChanged(string path, bool isChecked)
+        {
+            if (Loading)
+            {
+                return;
+            }
+            List<string> enabled = Program.Blocker.EnabledKeyboards;
+            // 之前是全选状态：先把「实际参与」的集合显式铺开，再应用这次改动
+            if (enabled.Count == 0)
+            {
+                foreach (KeyboardDevice d in KeyboardDevices.Active)
+                {
+                    enabled.Add(d.Path);
+                }
+            }
+            enabled.Remove(path);
+            if (isChecked)
+            {
+                enabled.Add(path);
+            }
+            // 又变回全选 → 收干净
+            if (enabled.Count == KeyboardDevices.Active.Count)
+            {
+                enabled.Clear();
+            }
+            Program.Blocker.SaveConfig();
+            DevicesIdentifyLabel.Text = string.Empty;
+        }
+
+        private void DevicesIdentifyButton_Click(object sender, EventArgs e)
+        {
+            _identifying = true;
+            DevicesIdentifyLabel.Text = Strings.DevicesIdentifyArmed;
+            DevicesIdentifyLabel.ForeColor = ThemeManager.Current.Accent;
+            KeyboardDevices.KeyFromDevice -= OnDeviceKeyForIdentify;
+            KeyboardDevices.KeyFromDevice += OnDeviceKeyForIdentify;
+        }
+
+        /// <summary>识别到按键：把对应那行高亮出来，并结束待识别状态。</summary>
+        private void OnDeviceKeyForIdentify(KeyboardDevice device)
+        {
+            if (!_identifying)
+            {
+                return;
+            }
+            _identifying = false;
+            KeyboardDevices.KeyFromDevice -= OnDeviceKeyForIdentify;
+            DevicesIdentifyLabel.Text = string.Format(Strings.DevicesIdentifiedFormat, device.Label);
+            DevicesIdentifyLabel.ForeColor = ThemeManager.Current.Accent;
+
+            if (_highlightedDeviceRow != null)
+            {
+                _highlightedDeviceRow.BackColor = ThemeManager.Current.CardBg;
+                _highlightedDeviceRow = null;
+            }
+            foreach (Control row in DevicesListPanel.Controls)
+            {
+                if (IsRowFor(row, device))
+                {
+                    row.BackColor = ThemeManager.Current.AccentSoft;
+                    _highlightedDeviceRow = row as Panel;
+                    break;
+                }
+            }
+        }
+
+        /// <summary>行里那个复选框的文字就是设备名，用它认行。</summary>
+        private static bool IsRowFor(Control row, KeyboardDevice device)
+        {
+            ModernCheckBox box = row.Controls.Count > 0 ? row.Controls[0] as ModernCheckBox : null;
+            return box != null && box.Text == device.Label;
         }
 
         /// <summary>

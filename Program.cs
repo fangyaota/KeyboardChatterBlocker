@@ -66,6 +66,13 @@ namespace KeyboardChatterBlocker
         static void Main(string[] args)
         {
             NormalizeCulture();
+            // 键盘设备跟踪辅助进程：同一份 exe 的第二个实例，只注册 Raw Input 报设备，
+            // 不建窗体、不装钩子、不进托盘。必须隔离成独立进程 —— 原因见 UI/KeyboardDevices.cs。
+            if (DeviceTrackerHost.IsTrackerInvocation(args))
+            {
+                DeviceTrackerHost.Run(args);
+                return;
+            }
             // If triggered by the installer, close this and relaunch, to avoid hanging up the installer.
             if (args.Length == 1 && args[0] == "_INSTALLER_AUTOBOUNCE")
             {

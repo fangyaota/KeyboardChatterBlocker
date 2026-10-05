@@ -84,6 +84,20 @@ namespace KeyboardChatterBlocker
         public Action<Keys, bool, bool> KeyEvent;
 
         /// <summary>
+        /// 当前这个按键是否来自「参与拦截」的键盘。由 UI 层按设备白名单设置；
+        /// <b>未设置时一律当作 true</b>（= 所有键盘都参与拦截，即默认行为）。
+        /// <para>
+        /// 返回 false 时该事件的按下/抬起都会被直接放行，而且**不进入记账**
+        /// （不调用 <see cref="KeyBlocker.AllowKeyDown"/> / <see cref="KeyBlocker.AllowKeyUp"/>）——
+        /// 否则被排除键盘的状态会残留在 KeyBlocker 里。
+        /// </para>
+        /// <para>
+        /// ⚠ 和 <see cref="KeyEvent"/> 一样跑在输入路径上，实现必须极快返回。
+        /// </para>
+        /// </summary>
+        public Func<bool> CurrentDeviceAllowed;
+
+        /// <summary>
         /// The current keyboard hook ID.
         /// </summary>
         public IntPtr KeyboardHookID = IntPtr.Zero;
@@ -177,6 +191,14 @@ namespace KeyboardChatterBlocker
                         return CallNextHookEx(KeyboardHookID, nCode, wParam, lParam);
                     }
                     Keys key = (Keys)hookStruct.vkCode;
+                    // 键盘设备白名单：不在名单里的键盘一律放行，而且完全不记账
+                    Func<bool> deviceAllowed = CurrentDeviceAllowed;
+                    if (deviceAllowed != null && !deviceAllowed())
+                    {
+                        // 照样上报，键盘测试页仍然看得到这些事件（只是永远不会被标红）
+                        KeyEvent?.Invoke(key, isDown, true);
+                        return CallNextHookEx(KeyboardHookID, nCode, wParam, lParam);
+                    }
                     bool allowed;
                     if (isDown)
                     {

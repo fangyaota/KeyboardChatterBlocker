@@ -10,7 +10,7 @@ namespace KeyboardChatterBlocker
     /// <summary>主界面上的页面。</summary>
     public enum MainPage
     {
-        Log, Stats, Keys, KeyboardTest, AutoDisable, OtherSettings, About
+        Log, Stats, Keys, KeyboardTest, KeyboardDevices, AutoDisable, OtherSettings, About
     }
 
     partial class MainBlockerForm
@@ -31,6 +31,7 @@ namespace KeyboardChatterBlocker
         private Panel statsPage;
         private Panel keysPage;
         private Panel keyboardTestPage;
+        private Panel keyboardDevicesPage;
         private Panel autoDisablePage;
         private Panel otherSettingsPage;
         private Panel aboutPage;
@@ -54,6 +55,7 @@ namespace KeyboardChatterBlocker
         private SideNavButton navStats;
         private SideNavButton navKeys;
         private SideNavButton navKeyboardTest;
+        private SideNavButton navKeyboardDevices;
         private SideNavButton navAutoDisable;
         private SideNavButton navSettings;
         private SideNavButton navAbout;
@@ -94,6 +96,11 @@ namespace KeyboardChatterBlocker
         public ModernLabel TestVerdictLabel;
         public ModernLabel TestDownKeysLabel;
         public ModernLabel TestHintLabel;
+
+        // —— 键盘设备页 ——
+        public ModernButton DevicesIdentifyButton;
+        public ModernLabel DevicesIdentifyLabel;
+        public Panel DevicesListPanel;
 
         // —— 自动禁用程序页 ——
         public ModernListView AutoDisableProgramsList;
@@ -352,20 +359,23 @@ namespace KeyboardChatterBlocker
 
         private void BuildNav()
         {
-            navPanel = new Panel { Dock = DockStyle.Fill, BackColor = ThemeManager.Current.SidebarBg };
+            // AutoScroll：窗口压到最小高度时导航项不至于被裁掉
+            navPanel = new Panel { Dock = DockStyle.Fill, BackColor = ThemeManager.Current.SidebarBg, AutoScroll = true };
 
             navLog = MakeNav(NavGlyph.Log, Strings.NavLog, 0);
             navStats = MakeNav(NavGlyph.Stats, Strings.NavStats, 1);
             navKeys = MakeNav(NavGlyph.Keys, Strings.NavKeys, 2);
             navKeyboardTest = MakeNav(NavGlyph.Keyboard, Strings.NavKeyboardTest, 3);
-            navAutoDisable = MakeNav(NavGlyph.AutoDisable, Strings.NavAutoDisable, 4);
-            navSettings = MakeNav(NavGlyph.Settings, Strings.NavSettings, 5);
-            navAbout = MakeNav(NavGlyph.About, Strings.NavAbout, 6);
+            navKeyboardDevices = MakeNav(NavGlyph.Keyboard, Strings.NavKeyboardDevices, 4);
+            navAutoDisable = MakeNav(NavGlyph.AutoDisable, Strings.NavAutoDisable, 5);
+            navSettings = MakeNav(NavGlyph.Settings, Strings.NavSettings, 6);
+            navAbout = MakeNav(NavGlyph.About, Strings.NavAbout, 7);
 
             navLog.Click += (s, e) => NavigateTo(MainPage.Log);
             navStats.Click += (s, e) => NavigateTo(MainPage.Stats);
             navKeys.Click += (s, e) => NavigateTo(MainPage.Keys);
             navKeyboardTest.Click += (s, e) => NavigateTo(MainPage.KeyboardTest);
+            navKeyboardDevices.Click += (s, e) => NavigateTo(MainPage.KeyboardDevices);
             navAutoDisable.Click += (s, e) => NavigateTo(MainPage.AutoDisable);
             navSettings.Click += (s, e) => NavigateTo(MainPage.OtherSettings);
             navAbout.Click += (s, e) => NavigateTo(MainPage.About);
@@ -388,6 +398,7 @@ namespace KeyboardChatterBlocker
             statsPage = BuildStatsPage();
             keysPage = BuildKeysPage();
             keyboardTestPage = BuildKeyboardTestPage();
+            keyboardDevicesPage = BuildKeyboardDevicesPage();
             autoDisablePage = BuildAutoDisablePage();
             otherSettingsPage = BuildOtherSettingsPage();
             aboutPage = BuildAboutPage();
@@ -395,6 +406,7 @@ namespace KeyboardChatterBlocker
             contentHost.Controls.Add(aboutPage);
             contentHost.Controls.Add(otherSettingsPage);
             contentHost.Controls.Add(autoDisablePage);
+            contentHost.Controls.Add(keyboardDevicesPage);
             contentHost.Controls.Add(keyboardTestPage);
             contentHost.Controls.Add(keysPage);
             contentHost.Controls.Add(statsPage);
@@ -817,6 +829,92 @@ namespace KeyboardChatterBlocker
             card.Controls.Add(hint);
             card.Controls.Add(title);
 
+            page.Controls.Add(card);
+            return page;
+        }
+
+        /// <summary>
+        /// 「键盘设备」页：勾选哪些键盘参与抖动拦截。
+        /// <para>
+        /// 默认全选（= 不写配置项，所有键盘都拦）。设备名是系统给的机器码，
+        /// 所以配一个「识别」按钮 —— 点一下再按某个键盘，对应那行高亮。
+        /// </para>
+        /// </summary>
+        private Panel BuildKeyboardDevicesPage()
+        {
+            Panel page = MakePage();
+            CardPanel card = new CardPanel { Dock = DockStyle.Fill, Margin = Padding.Empty };
+
+            TableLayoutPanel stack = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 1,
+                RowCount = 4,
+                BackColor = ThemeManager.Current.CardBg,
+                CellBorderStyle = TableLayoutPanelCellBorderStyle.None,
+            };
+            stack.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+            stack.RowStyles.Add(new RowStyle(SizeType.Absolute, P(34)));   // 标题
+            stack.RowStyles.Add(new RowStyle(SizeType.Absolute, P(28)));   // 提示
+            stack.RowStyles.Add(new RowStyle(SizeType.Absolute, P(46)));   // 识别
+            stack.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));     // 设备列表
+
+            ModernLabel title = new ModernLabel { Text = Strings.DevicesTitle, Font = Fonts.Heading, Dock = DockStyle.Fill };
+            ModernLabel hint = new ModernLabel
+            {
+                Text = Strings.DevicesHint,
+                Font = Fonts.Small,
+                ForeColor = ThemeManager.Current.TextMuted,
+                Dock = DockStyle.Fill,
+            };
+
+            // —— 识别行 ——
+            TableLayoutPanel identifyRow = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 2,
+                RowCount = 1,
+                BackColor = ThemeManager.Current.CardBg,
+                CellBorderStyle = TableLayoutPanelCellBorderStyle.None,
+            };
+            identifyRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, P(110)));
+            identifyRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+            identifyRow.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
+
+            DevicesIdentifyButton = new ModernButton
+            {
+                Text = Strings.DevicesIdentify,
+                Dock = DockStyle.Fill,
+                Margin = new Padding(0, P(6), P(12), P(6)),
+            };
+            DevicesIdentifyButton.Click += DevicesIdentifyButton_Click;
+
+            DevicesIdentifyLabel = new ModernLabel
+            {
+                Text = string.Empty,
+                Font = Fonts.Small,
+                ForeColor = ThemeManager.Current.TextMuted,
+                Dock = DockStyle.Fill,
+            };
+            identifyRow.Controls.Add(DevicesIdentifyButton, 0, 0);
+            identifyRow.Controls.Add(DevicesIdentifyLabel, 1, 0);
+
+            // —— 设备列表 ——
+            // 用普通 Panel + Dock=Top 的行：宽度自动跟随面板，行高由控件自己定，
+            // 不依赖 TableLayoutPanel 的行样式（那边实测行高不生效）。
+            DevicesListPanel = new Panel
+            {
+                Dock = DockStyle.Fill,
+                BackColor = ThemeManager.Current.CardBg,
+                AutoScroll = true,
+            };
+
+            stack.Controls.Add(title, 0, 0);
+            stack.Controls.Add(hint, 0, 1);
+            stack.Controls.Add(identifyRow, 0, 2);
+            stack.Controls.Add(DevicesListPanel, 0, 3);
+
+            card.Controls.Add(stack);
             page.Controls.Add(card);
             return page;
         }
