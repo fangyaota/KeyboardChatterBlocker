@@ -136,31 +136,63 @@ namespace KeyboardChatterBlocker
             Note("消息循环结束");
         }
 
+        /// <summary>
+        /// 盯着父进程，它一没就退出。
+        /// <para>
+        /// ⚠ 这里踩过两个坑，都修掉了：
+        /// ① <c>Application.ExitThread()</c> **只对调用它的那个线程生效** —— 在后台线程上调用
+        ///    等于什么都没做，消息循环照跑，辅助进程就成了孤儿。必须回到 UI 线程上调用。
+        /// ② 不能每轮都用 <c>GetProcessById(pid)</c> 重新查 —— 父进程死后 PID 会被系统复用，
+        ///    新查到的就是别的进程了，会永远等下去。**只取一次 Process 对象**，
+        ///    它持有句柄，PID 复用也认不错。
+        /// </para>
+        /// </summary>
         private static void WatchParent(int parentPid)
         {
-            while (true)
+            Process parent;
+            try
             {
-                Thread.Sleep(1000);
-                try
+                parent = Process.GetProcessById(parentPid);
+            }
+            catch (ArgumentException)
+            {
+                ExitHelper("父进程已经不在，直接退出");
+                return;
+            }
+            try
+            {
+                while (!parent.WaitForExit(1000))
                 {
-                    using (Process parent = Process.GetProcessById(parentPid))
-                    {
-                        if (parent.HasExited)
-                        {
-                            break;
-                        }
-                    }
+                    // 父进程还活着，继续等
                 }
-                catch (ArgumentException)
+                ExitHelper("父进程退出");
+            }
+            catch (Exception ex)
+            {
+                ExitHelper("看门狗异常，退出：" + ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// 把辅助进程关掉。必须回到 UI 线程上结束消息循环；
+        /// 万一 UI 线程卡住导致那条路走不通，几秒后直接硬退 —— **绝不能留下孤儿**。
+        /// </summary>
+        private static void ExitHelper(string reason)
+        {
+            Note(reason);
+            try
+            {
+                if (_window != null && _window.IsHandleCreated)
                 {
-                    break;   // 进程已经不存在
-                }
-                catch (Exception)
-                {
-                    // 一时读不到，继续看
+                    _window.BeginInvoke(new Action(() => Application.ExitThread()));
+                    Thread.Sleep(3000);   // 正常的话这会儿已经退了
                 }
             }
-            try { Application.ExitThread(); } catch (Exception) { }
+            catch (Exception)
+            {
+                // 落到下面的兜底
+            }
+            Environment.Exit(0);
         }
 
         private static string PathOf(IntPtr handle)
