@@ -66,6 +66,58 @@ namespace KeyboardChatterBlocker
         /// <summary>已经按出过按键的键盘，按首次出现的顺序。</summary>
         public static IList<KeyboardDevice> Active { get { return _active; } }
 
+        /// <summary>当前设备的短 id（给 Core 的逐键盘阈值/统计用）。未知时为 null。</summary>
+        public static string CurrentId
+        {
+            get { string path = _currentPath; return path == null ? null : ShortId(path); }
+        }
+
+        /// <summary>当前设备的界面显示名。未知时为 null。</summary>
+        public static string CurrentLabel
+        {
+            get
+            {
+                string path = _currentPath;
+                KeyboardDevice device;
+                return path != null && _byPath.TryGetValue(path, out device) ? device.Label : null;
+            }
+        }
+
+        /// <summary>
+        /// 设备路径 → 短 id，用在配置键名里（<c>key.&lt;短id&gt;.H</c>）。
+        /// <para>
+        /// 优先用 <c>vid_xxxx&amp;pid_yyyy</c> → <c>xxxx-yyyy</c>；
+        /// 取不到（笔记本内置键盘走 ACPI）就用路径前两段 → <c>acpi-msft0001</c>。
+        /// </para>
+        /// <para>
+        /// ⚠ 两把**同型号**键盘的 VID/PID 相同，短 id 会撞车。罕见，但确实存在。
+        /// </para>
+        /// </summary>
+        public static string ShortId(string path)
+        {
+            if (string.IsNullOrEmpty(path))
+            {
+                return null;
+            }
+            Match match = Regex.Match(path, @"vid_([0-9a-f]{4}).*?pid_([0-9a-f]{4})", RegexOptions.IgnoreCase);
+            if (match.Success)
+            {
+                return (match.Groups[1].Value + "-" + match.Groups[2].Value).ToLowerInvariant();
+            }
+            string s = path;
+            int brace = s.IndexOf("#{", StringComparison.Ordinal);
+            if (brace > 0)
+            {
+                s = s.Substring(0, brace);
+            }
+            string[] parts = s.TrimStart('\\', '?').Split(new[] { '#' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length >= 2)
+            {
+                return (parts[0] + "-" + parts[1]).ToLowerInvariant();
+            }
+            return parts.Length > 0 ? parts[0].ToLowerInvariant() : null;
+        }
+
         /// <summary>开始跟踪：拉起辅助进程并开始轮询共享内存。</summary>
         public static void Start()
         {

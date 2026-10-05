@@ -58,7 +58,7 @@
 
         // —— 按键配置 ——
         public const string KeysTitle = "按键配置";
-        public const string KeysHint = "为个别问题按键单独设置更高的阈值。未列出的按键使用全局阈值。";
+        public const string KeysHint = "为个别问题按键单独设置阈值。右上角筛选决定这一份属于谁：「全部键盘」= 默认阈值，选某把键盘 = 只对它生效。";
         public const string ColThreshold = "抖动阈值";
         public const string ColRemove = "移除";
         public const string AddKey = "添加按键";
@@ -105,6 +105,10 @@
         public const string DevicesIdentifyArmed = "请按一下要识别的那把键盘…";
         public const string DevicesIdentifiedFormat = "刚按的是「{0}」";
         public const string DevicesNote = "设备名是系统给的机器码；切换键盘后的第一次按键可能被判到上一把键盘上，之后立刻纠正。";
+
+        // —— 键盘筛选（本版新增功能）——
+        public const string FilterAllKeyboards = "全部键盘";
+        public const string ColKeyboard = "键盘";
 
         // —— 键盘测试 ——
         public const string TestTitle = "键盘测试";

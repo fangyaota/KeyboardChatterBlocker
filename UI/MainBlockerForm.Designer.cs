@@ -63,6 +63,7 @@ namespace KeyboardChatterBlocker
         // —— 抖动日志页 ——
         public ModernDataGridView ChatterLogGrid;
         private DataGridViewTextBoxColumn colLogTime;
+        private DataGridViewTextBoxColumn colLogKeyboard;
         private DataGridViewTextBoxColumn colLogKey;
         private DataGridViewTextBoxColumn colLogDelay;
         private DataGridViewTextBoxColumn colLogConfigure;
@@ -96,6 +97,12 @@ namespace KeyboardChatterBlocker
         public ModernLabel TestVerdictLabel;
         public ModernLabel TestDownKeysLabel;
         public ModernLabel TestHintLabel;
+
+        // —— 各页的键盘筛选框 ——
+        public ModernComboBox LogKeyboardFilter;
+        public ModernComboBox StatsKeyboardFilter;
+        public ModernComboBox KeysKeyboardFilter;
+        public ModernComboBox TestKeyboardFilter;
 
         // —— 键盘设备页 ——
         public ModernButton DevicesIdentifyButton;
@@ -421,15 +428,19 @@ namespace KeyboardChatterBlocker
             // 空格/回车还可能按下「配置」那一列的按钮单元格、直接弹出对话框。
             ModernDataGridView grid = new ModernDataGridView { Dock = DockStyle.Fill, Focusable = false };
             colLogTime = new DataGridViewTextBoxColumn { HeaderText = Strings.ColTime, Width = P(150) };
+            colLogKeyboard = new DataGridViewTextBoxColumn { HeaderText = Strings.ColKeyboard, Width = P(170) };
             // 「按键」列吃掉剩余宽度，避免右侧留一条突兀的空白
             colLogKey = new DataGridViewTextBoxColumn { HeaderText = Strings.ColKey, AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill, MinimumWidth = P(140) };
             colLogDelay = new DataGridViewTextBoxColumn { HeaderText = Strings.ColChatterDelay, Width = P(180), ValueType = typeof(int) };
             colLogConfigure = new DataGridViewTextBoxColumn { HeaderText = Strings.ColConfigure, Width = P(90) };
-            grid.Columns.AddRange(colLogTime, colLogKey, colLogDelay, colLogConfigure);
+            grid.Columns.AddRange(colLogTime, colLogKeyboard, colLogKey, colLogDelay, colLogConfigure);
             grid.CellContentDoubleClick += ChatterLogGrid_CellContentDoubleClick;
             ChatterLogGrid = grid;
 
-            page.Controls.Add(MakeCard(Strings.LogTitle, Strings.LogHint, grid));
+            CardPanel logCard = MakeCard(Strings.LogTitle, Strings.LogHint, grid);
+            LogKeyboardFilter = MakeKeyboardFilter(logCard, 0, true);
+            LogKeyboardFilter.SelectedIndexChanged += (s, e) => RebuildLogRows();
+            page.Controls.Add(logCard);
             return page;
         }
 
@@ -446,7 +457,10 @@ namespace KeyboardChatterBlocker
             grid.Columns.AddRange(colStatsKey, colStatsCount, colStatsChatter, colStatsRate);
             StatsGrid = grid;
 
-            page.Controls.Add(MakeCard(Strings.StatsTitle, Strings.StatsHint, grid));
+            CardPanel statsCard = MakeCard(Strings.StatsTitle, Strings.StatsHint, grid);
+            StatsKeyboardFilter = MakeKeyboardFilter(statsCard, 0, true);
+            StatsKeyboardFilter.SelectedIndexChanged += (s, e) => PushStatsToGrid();
+            page.Controls.Add(statsCard);
             return page;
         }
 
@@ -472,9 +486,15 @@ namespace KeyboardChatterBlocker
                 Size = new Size(P(120), P(Metrics.ButtonHeight)),
             };
             AddKeyButton.Click += AddKeyButton_Click;
+
+            // 右上角：筛选框占最右，添加按钮排在它左边
+            KeysKeyboardFilter = MakeKeyboardFilter(card, 0, true);
+            KeysKeyboardFilter.SelectedIndexChanged += (s, e) => PushKeysToGrid();
+            int filterWidth = KeysKeyboardFilter.Width + P(8);
             card.Controls.Add(AddKeyButton);
             AddKeyButton.BringToFront();
-            card.Resize += (s, e) => PositionOverlay(AddKeyButton, card);
+            card.Resize += (s, e) => PositionOverlay(AddKeyButton, card, filterWidth);
+            KeysKeyboardFilter.Resize += (s, e) => PositionOverlay(AddKeyButton, card, filterWidth);
 
             page.Controls.Add(card);
             return page;
@@ -610,9 +630,16 @@ namespace KeyboardChatterBlocker
                 Focusable = false,
             };
             TestClearMarksButton.Click += TestClearMarksButton_Click;
+
+            // 右上角：筛选框占最右，「重置」排在它左边。筛选框同样不可获焦点 ——
+            // 这页的每一次按键都必须留给键盘图。
+            TestKeyboardFilter = MakeKeyboardFilter(card, 0, false);
+            TestKeyboardFilter.SelectedIndexChanged += (s, e) => TestClearMarksButton_Click(null, System.EventArgs.Empty);
+            int testFilterWidth = TestKeyboardFilter.Width + P(8);
             card.Controls.Add(TestClearMarksButton);
             TestClearMarksButton.BringToFront();
-            card.Resize += (s, e) => PositionOverlay(TestClearMarksButton, card);
+            card.Resize += (s, e) => PositionOverlay(TestClearMarksButton, card, testFilterWidth);
+            TestKeyboardFilter.Resize += (s, e) => PositionOverlay(TestClearMarksButton, card, testFilterWidth);
 
             page.Controls.Add(card);
             return page;
@@ -1266,11 +1293,38 @@ namespace KeyboardChatterBlocker
             };
         }
 
-        /// <summary>把浮层按钮摆到卡片右上角。</summary>
-        private void PositionOverlay(Control overlay, CardPanel card)
+        /// <summary>
+        /// 把浮层按钮摆到卡片右上角。<paramref name="extraRight"/> 用来给右侧已经占位的控件让路
+        /// （比如「按键配置」页的筛选框），单位是像素。
+        /// </summary>
+        private static void PositionOverlay(Control overlay, CardPanel card, int extraRight = 0)
         {
             int pad = P(Metrics.CardPadding);
-            overlay.Location = new Point(card.Width - overlay.Width - pad, pad - P(2));
+            overlay.Location = new Point(card.Width - overlay.Width - pad - extraRight, pad - P(2));
+        }
+
+        /// <summary>
+        /// 在卡片右上角放一个「键盘筛选」下拉框。
+        /// <para>
+        /// 首项固定是「全部键盘」（= 不筛选）。列表由
+        /// <see cref="RefreshKeyboardFilters"/> 在读出新键盘后填充。
+        /// </para>
+        /// </summary>
+        private static ModernComboBox MakeKeyboardFilter(CardPanel card, int extraRight, bool focusable)
+        {
+            ModernComboBox combo = new ModernComboBox
+            {
+                Size = new Size(P(170), P(28)),
+                // 这是键盘工具：筛选框绝不能把按键吃掉（键盘测试页尤其致命）
+                Focusable = focusable,
+            };
+            combo.Items.Add(Strings.FilterAllKeyboards);
+            combo.SelectedIndex = 0;
+            card.Controls.Add(combo);
+            combo.BringToFront();
+            card.Resize += (s, e) => PositionOverlay(combo, card, extraRight);
+            combo.Resize += (s, e) => PositionOverlay(combo, card, extraRight);
+            return combo;
         }
     }
 }

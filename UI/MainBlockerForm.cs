@@ -160,25 +160,81 @@ namespace KeyboardChatterBlocker
         /// Method auto-called (by event) for when a key is blocked.
         /// </summary>
         /// <param name="e">The key blocked event details.</param>
+        /// <summary>抖动日志的一条记录。表格只显示通过筛选的那些。</summary>
+        private sealed class LogEntry
+        {
+            public string Time;
+            /// <summary>设备显示名；设备未知时为空串。</summary>
+            public string Keyboard;
+            public Keys Key;
+            public uint Interval;
+        }
+
+        /// <summary>
+        /// 完整日志。表格是它的一个「视图」—— 切换键盘筛选时按筛选重建，
+        /// 所以原始记录不会因为筛选而丢。
+        /// </summary>
+        private readonly List<LogEntry> _logEntries = new List<LogEntry>();
+
         public void LogKeyBlocked(KeyBlockedEventArgs e)
         {
             if (ChatterLogGrid == null || ChatterLogGrid.IsDisposed) { return; }
-            bool wasScrolledToBottom = ChatterLogGrid.RowCount == 0
-                || ChatterLogGrid.FirstDisplayedScrollingRowIndex + ChatterLogGrid.DisplayedRowCount(true) >= ChatterLogGrid.RowCount;
-            ChatterLogGrid.Rows.Add(
-                DateTime.Now.ToString("MM/dd HH:mm:ss", CultureInfo.InvariantCulture),
-                KeyNames.Display(e.Key),
-                e.Time,
-                Strings.CellEdit);
+            LogEntry entry = new LogEntry
+            {
+                Time = DateTime.Now.ToString("MM/dd HH:mm:ss", CultureInfo.InvariantCulture),
+                Keyboard = KeyboardDevices.CurrentLabel ?? string.Empty,
+                Key = e.Key,
+                Interval = e.Time,
+            };
+            _logEntries.Add(entry);
             // 有按键被拦下 → 立刻启动长按救援轮询。该定时器平时是停着的，只在有待救援按键时才跑，
             // 因此不会给钩子线程增加常态负担。
             if (HoldRescueTimer != null && !HoldRescueTimer.Enabled && Program.Blocker.HasPendingRescue)
             {
                 HoldRescueTimer.Start();
             }
+            string filter = SelectedKeyboardLabel(LogKeyboardFilter);
+            if (filter != null && entry.Keyboard != filter)
+            {
+                return;   // 这条不属于当前筛选，只留在内存里
+            }
+            AppendLogRow(entry);
+        }
+
+        private void AppendLogRow(LogEntry entry)
+        {
+            bool wasScrolledToBottom = ChatterLogGrid.RowCount == 0
+                || ChatterLogGrid.FirstDisplayedScrollingRowIndex + ChatterLogGrid.DisplayedRowCount(true) >= ChatterLogGrid.RowCount;
+            ChatterLogGrid.Rows.Add(entry.Time, entry.Keyboard, KeyNames.Display(entry.Key), entry.Interval, Strings.CellEdit);
             // 追加的行同样要落进用户选的排序里（未排序时该调用零开销）
             ChatterLogGrid.ReapplySort();
             if (wasScrolledToBottom && ChatterLogGrid.RowCount > 0)
+            {
+                ChatterLogGrid.FirstDisplayedScrollingRowIndex = ChatterLogGrid.RowCount - 1;
+            }
+        }
+
+        /// <summary>筛选变了：按当前筛选把表格整个重建一遍。</summary>
+        private void RebuildLogRows()
+        {
+            if (ChatterLogGrid == null || ChatterLogGrid.IsDisposed)
+            {
+                return;
+            }
+            string filter = SelectedKeyboardLabel(LogKeyboardFilter);
+            ChatterLogGrid.SuspendLayout();
+            ChatterLogGrid.Rows.Clear();
+            foreach (LogEntry entry in _logEntries)
+            {
+                if (filter != null && entry.Keyboard != filter)
+                {
+                    continue;
+                }
+                ChatterLogGrid.Rows.Add(entry.Time, entry.Keyboard, KeyNames.Display(entry.Key), entry.Interval, Strings.CellEdit);
+            }
+            ChatterLogGrid.ResumeLayout(true);
+            ChatterLogGrid.ReapplySort();
+            if (ChatterLogGrid.RowCount > 0)
             {
                 ChatterLogGrid.FirstDisplayedScrollingRowIndex = ChatterLogGrid.RowCount - 1;
             }
@@ -344,6 +400,13 @@ namespace KeyboardChatterBlocker
         /// </summary>
         private void OnInterceptorKeyEvent(Keys key, bool isDown, bool allowed)
         {
+            // 键盘测试的筛选：选了某把键盘，就只理会那把键盘的按键 ——
+            // 否则键盘图和测试统计里会混进别的键盘，读数就不是「这把键盘」的了。
+            string testFilter = SelectedKeyboardLabel(TestKeyboardFilter);
+            if (testFilter != null && KeyboardDevices.CurrentLabel != testFilter)
+            {
+                return;
+            }
             // 站在键盘测试页时，按键更要优先给键盘图
             if (_currentPage == MainPage.KeyboardTest && ChatterThresholdBox.IsEditing)
             {
@@ -880,7 +943,10 @@ namespace KeyboardChatterBlocker
             // 键盘设备白名单：设备识别跑在独立进程里（KeyboardDevices 只是读者），
             // 主进程自己不注册 Raw Input —— 否则会把自己的键盘钩子弄哑，见 KeyboardDevices 的说明。
             KeyboardDevices.DevicesChanged += RebuildDeviceRows;
+            KeyboardDevices.DevicesChanged += RefreshKeyboardFilters;
             Program.Interceptor.CurrentDeviceAllowed = KeyboardDevices.IsCurrentDeviceEnabled;
+            // 逐键盘阈值与统计要按「这次按键来自哪把键盘」分流，Core 通过这个回调问 UI
+            Program.Blocker.CurrentDeviceIdProvider = () => KeyboardDevices.CurrentId;
             KeyboardDevices.Start();
             RebuildDeviceRows();
             StatsUpdateTimer = new Timer { Interval = StatsRefreshIntervalMs };
@@ -978,13 +1044,28 @@ namespace KeyboardChatterBlocker
         /// <summary>
         /// Pushes all stats to the GUI grid.
         /// </summary>
+        /// <summary>设备维度统计缺失时的空表，避免每次刷新都新建对象。</summary>
+        private static readonly AcceleratedKeyMap<int> EmptyStats = new AcceleratedKeyMap<int>();
+
         public void PushStatsToGrid()
         {
+            // 键盘筛选：全部键盘 → 全局合计；某把键盘 → 它的明细
+            AcceleratedKeyMap<int> counts = Program.Blocker.StatsKeyCount;
+            AcceleratedKeyMap<int> chatters = Program.Blocker.StatsKeyChatter;
+            string deviceId = SelectedKeyboardId(StatsKeyboardFilter);
+            if (deviceId != null)
+            {
+                AcceleratedKeyMap<int> deviceCounts;
+                AcceleratedKeyMap<int> deviceChatters;
+                counts = Program.Blocker.StatsKeyCountByDevice.TryGetValue(deviceId, out deviceCounts) ? deviceCounts : EmptyStats;
+                chatters = Program.Blocker.StatsKeyChatterByDevice.TryGetValue(deviceId, out deviceChatters) ? deviceChatters : EmptyStats;
+            }
+
             StatsGrid.SuspendLayout();
             StatsGrid.Rows.Clear();
-            foreach (KeyValuePair<Keys, int> keyData in Program.Blocker.StatsKeyCount.MainDictionary)
+            foreach (KeyValuePair<Keys, int> keyData in counts.MainDictionary)
             {
-                int chatterTotal = Program.Blocker.StatsKeyChatter[keyData.Key];
+                int chatterTotal = chatters[keyData.Key];
                 string percentage = chatterTotal == 0 ? "" : ((chatterTotal * 100.0f / keyData.Value).ToString("00.00", CultureInfo.InvariantCulture) + "%");
                 StatsGrid.Rows.Add(KeyNames.Display(keyData.Key), keyData.Value, chatterTotal, percentage);
             }
@@ -998,9 +1079,11 @@ namespace KeyboardChatterBlocker
         /// </summary>
         public void PushKeysToGrid()
         {
+            // 一次只显示一个作用域：「全部键盘」= 全局表，某把键盘 = 它的覆盖表
+            AcceleratedKeyMap<uint?> scope = CurrentKeysScopeMap();
             ConfigureKeysGrid.SuspendLayout();
             ConfigureKeysGrid.Rows.Clear();
-            foreach (KeyValuePair<Keys, uint?> keyData in Program.Blocker.KeysToChatterTime.MainDictionary)
+            foreach (KeyValuePair<Keys, uint?> keyData in scope.MainDictionary)
             {
                 if (!keyData.Value.HasValue)
                 {
@@ -1031,22 +1114,24 @@ namespace KeyboardChatterBlocker
                 MessageBox.Show(Strings.ErrorGridMisconfigured, Strings.ErrorTitle, MessageBoxButtons.OK);
                 return;
             }
+            // 编辑落在当前作用域上：「全部键盘」写全局表，选某把键盘写它的覆盖表
+            AcceleratedKeyMap<uint?> scope = CurrentKeysScopeMap();
             if (e.ColumnIndex == 1) // Value column
             {
-                uint resultValue = Program.Blocker.KeysToChatterTime[key] ?? Program.Blocker.GlobalChatterTimeLimit;
+                uint resultValue = scope[key] ?? Program.Blocker.GlobalChatterTimeLimit;
                 using (KeyConfigurationForm keyConfigForm = new KeyConfigurationForm())
                 {
                     keyConfigForm.Key = key;
                     keyConfigForm.SetResult = (i) => { resultValue = i; };
                     keyConfigForm.ShowDialog(this);
                 }
-                Program.Blocker.KeysToChatterTime[key] = resultValue;
+                scope[key] = resultValue;
                 Program.Blocker.SaveConfig();
                 ConfigureKeysGrid[1, e.RowIndex].Value = resultValue.ToString(CultureInfo.InvariantCulture);
             }
             else if (e.ColumnIndex == 2) // Remove column
             {
-                Program.Blocker.KeysToChatterTime[key] = null;
+                scope[key] = null;
                 Program.Blocker.SaveConfig();
                 ConfigureKeysGrid.Rows.RemoveAt(e.RowIndex);
             }
@@ -1089,7 +1174,7 @@ namespace KeyboardChatterBlocker
             {
                 return;
             }
-            Program.Blocker.KeysToChatterTime[result.Value] = Program.Blocker.GlobalChatterTimeLimit;
+            CurrentKeysScopeMap()[result.Value] = Program.Blocker.GlobalChatterTimeLimit;
             Program.Blocker.SaveConfig();
             // 重建而非追加，否则新键会落在末尾、破坏排序
             PushKeysToGrid();
@@ -1123,16 +1208,21 @@ namespace KeyboardChatterBlocker
             {
                 return;
             }
-            if (!KeyNames.TryParseDisplay(ChatterLogGrid[1, e.RowIndex].Value?.ToString(), out Keys key))
+            // 列序：0=时间 1=键盘 2=按键 3=抖动间隔 4=配置（加「键盘」列时整体后移过）
+            if (!KeyNames.TryParseDisplay(ChatterLogGrid[2, e.RowIndex].Value?.ToString(), out Keys key))
             {
                 MessageBox.Show(Strings.ErrorGridMisconfigured, Strings.ErrorTitle, MessageBoxButtons.OK);
                 return;
             }
-            if (e.ColumnIndex == 3) // 'Configure' column
+            if (e.ColumnIndex == 4) // 'Configure' column
             {
-                if (!Program.Blocker.KeysToChatterTime[key].HasValue)
+                // 这条记录是哪把键盘拦下的，就跳到那把键盘的作用域去配 —— 否则用户会在
+                // 「全部键盘」的列表里找不到刚点的那一行。
+                SelectKeysScope(ChatterLogGrid[1, e.RowIndex].Value?.ToString());
+                AcceleratedKeyMap<uint?> scope = CurrentKeysScopeMap();
+                if (!scope[key].HasValue)
                 {
-                    Program.Blocker.KeysToChatterTime[key] = Program.Blocker.GlobalChatterTimeLimit;
+                    scope[key] = Program.Blocker.GlobalChatterTimeLimit;
                     Program.Blocker.SaveConfig();
                     // 同上：重建以保证有序
                     PushKeysToGrid();
@@ -1410,6 +1500,120 @@ namespace KeyboardChatterBlocker
             }
             Program.Blocker.ExcludeInjected = ExcludeInjectedCheckbox.Checked;
             Program.Blocker.SaveConfig();
+        }
+
+        // ============================================================
+        // 键盘筛选（日志 / 统计 / 按键配置 / 键盘测试）
+        // ============================================================
+
+        /// <summary>
+        /// 读出新键盘后，把四个页面的筛选框重填一遍。
+        /// 尽量保留当前选中项（按文本匹配），选中的键盘不在了就退回「全部键盘」。
+        /// </summary>
+        private void RefreshKeyboardFilters()
+        {
+            ModernComboBox[] combos = { LogKeyboardFilter, StatsKeyboardFilter, KeysKeyboardFilter, TestKeyboardFilter };
+            foreach (ModernComboBox combo in combos)
+            {
+                if (combo == null)
+                {
+                    continue;
+                }
+                string previous = combo.SelectedIndex > 0 ? combo.Text : null;
+                bool wasLoading = Loading;
+                Loading = true;   // 重填期间别触发各页的刷新
+                combo.Items.Clear();
+                combo.Items.Add(Strings.FilterAllKeyboards);
+                foreach (KeyboardDevice device in KeyboardDevices.Active)
+                {
+                    combo.Items.Add(device.Label);
+                }
+                int index = 0;
+                if (previous != null)
+                {
+                    for (int i = 1; i < combo.Items.Count; i++)
+                    {
+                        if (string.Equals(combo.Items[i] as string, previous, StringComparison.Ordinal))
+                        {
+                            index = i;
+                            break;
+                        }
+                    }
+                }
+                combo.SelectedIndex = index;
+                Loading = wasLoading;
+            }
+        }
+
+        /// <summary>筛选框选中项 → 设备显示名；选「全部键盘」返回 null。</summary>
+        private static string SelectedKeyboardLabel(ModernComboBox combo)
+        {
+            return combo == null || combo.SelectedIndex <= 0 ? null : combo.Text;
+        }
+
+        /// <summary>筛选框选中项 → 设备短 id；选「全部键盘」返回 null。</summary>
+        private static string SelectedKeyboardId(ModernComboBox combo)
+        {
+            string label = SelectedKeyboardLabel(combo);
+            if (label == null)
+            {
+                return null;
+            }
+            foreach (KeyboardDevice device in KeyboardDevices.Active)
+            {
+                if (device.Label == label)
+                {
+                    return KeyboardDevices.ShortId(device.Path);
+                }
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// 「按键配置」页当前作用域的阈值表：
+        /// 选「全部键盘」→ 全局表 <see cref="KeyBlocker.KeysToChatterTime"/>；
+        /// 选某把键盘 → 它的覆盖表（没有就现建一个）。
+        /// </summary>
+        private AcceleratedKeyMap<uint?> CurrentKeysScopeMap()
+        {
+            string id = SelectedKeyboardId(KeysKeyboardFilter);
+            if (id == null)
+            {
+                return Program.Blocker.KeysToChatterTime;
+            }
+            AcceleratedKeyMap<uint?> map;
+            if (!Program.Blocker.KeysToChatterTimeByDevice.TryGetValue(id, out map))
+            {
+                map = new AcceleratedKeyMap<uint?>();
+                Program.Blocker.KeysToChatterTimeByDevice[id] = map;
+            }
+            return map;
+        }
+
+        /// <summary>把「按键配置」页的作用域切到某把键盘（null/空 = 全部键盘）。</summary>
+        private void SelectKeysScope(string keyboardLabel)
+        {
+            if (KeysKeyboardFilter == null)
+            {
+                return;
+            }
+            int index = 0;
+            if (!string.IsNullOrEmpty(keyboardLabel))
+            {
+                IList<KeyboardDevice> devices = KeyboardDevices.Active;
+                for (int i = 0; i < devices.Count; i++)
+                {
+                    if (devices[i].Label == keyboardLabel)
+                    {
+                        index = i + 1;
+                        break;
+                    }
+                }
+            }
+            if (KeysKeyboardFilter.SelectedIndex != index)
+            {
+                KeysKeyboardFilter.SelectedIndex = index;
+            }
         }
 
         // ============================================================

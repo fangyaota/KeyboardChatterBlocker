@@ -24,6 +24,40 @@ namespace KeyboardChatterBlocker.UI.Controls
         private int _selectedIndex = -1;
         private bool _hover;
         private bool _open;
+        private bool _focusable = true;
+        private bool _yieldingFocus;
+
+        /// <summary>
+        /// 是否接受焦点，默认 <c>true</c>。
+        /// <para>
+        /// 设为 <c>false</c> 后只能用鼠标点开：Tab 跳不过去，方向键/空格也不会被它吃掉。
+        /// 「键盘测试」页的筛选框需要这个 —— 那一页的每一次按键都该给键盘图。
+        /// </para>
+        /// <para>做法与 <see cref="ModernButton"/> / <see cref="ModernDataGridView"/> 一致：
+        /// 关 <c>Selectable</c>、拿到焦点立刻让出。</para>
+        /// </summary>
+        public bool Focusable
+        {
+            get { return _focusable; }
+            set
+            {
+                if (_focusable == value) { return; }
+                _focusable = value;
+                SetStyle(ControlStyles.Selectable, value);
+                TabStop = value;
+                if (!value && Focused && Parent != null)
+                {
+                    Parent.SelectNextControl(this, true, true, true, true);
+                }
+            }
+        }
+
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            // 建句柄时 WinForms 会把 Selectable 重新打开，必须在那之后再关一次
+            if (!_focusable) { SetStyle(ControlStyles.Selectable, false); }
+        }
 
         public ModernComboBox()
         {
@@ -110,7 +144,21 @@ namespace KeyboardChatterBlocker.UI.Controls
 
         protected override void OnMouseEnter(EventArgs e) { _hover = true; Invalidate(); base.OnMouseEnter(e); }
         protected override void OnMouseLeave(EventArgs e) { _hover = false; Invalidate(); base.OnMouseLeave(e); }
-        protected override void OnGotFocus(EventArgs e) { Invalidate(); base.OnGotFocus(e); }
+        protected override void OnGotFocus(EventArgs e)
+        {
+            Invalidate();
+            base.OnGotFocus(e);
+            // 不可获焦点时把焦点让出去。注意 OnMouseDown 里会主动 Focus()，
+            // 和 ButtonBase 一样绕过了 Selectable，所以必须在这里拦一道。
+            if (_focusable || _yieldingFocus) { return; }
+            _yieldingFocus = true;
+            try
+            {
+                Control c = Parent;
+                if (c == null || !c.SelectNextControl(this, true, true, true, true)) { c?.Focus(); }
+            }
+            finally { _yieldingFocus = false; }
+        }
         protected override void OnLostFocus(EventArgs e) { Invalidate(); base.OnLostFocus(e); }
 
         protected override void OnMouseDown(MouseEventArgs e)

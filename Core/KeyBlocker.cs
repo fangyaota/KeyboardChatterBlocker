@@ -111,7 +111,8 @@ namespace KeyboardChatterBlocker
             if (KeysToChatterTime[KeysHelper.KEY_MOUSE_LEFT].HasValue || KeysToChatterTime[KeysHelper.KEY_MOUSE_RIGHT].HasValue
                 || KeysToChatterTime[KeysHelper.KEY_MOUSE_MIDDLE].HasValue
                 || KeysToChatterTime[KeysHelper.KEY_MOUSE_FORWARD].HasValue || KeysToChatterTime[KeysHelper.KEY_MOUSE_BACKWARD].HasValue
-                || KeysToChatterTime[KeysHelper.KEY_WHEEL_CHANGE].HasValue)
+                || KeysToChatterTime[KeysHelper.KEY_WHEEL_CHANGE].HasValue
+                || AnyDeviceHasMouseKey())
             {
                 Interceptor.EnableMouseHook();
             }
@@ -146,12 +147,37 @@ namespace KeyboardChatterBlocker
             string settingValue = setting.Substring(colonIndex + 1).Trim();
             if (settingName.StartsWith("key."))
             {
-                if (!KeysHelper.TryGetKey(settingName.Substring("key.".Length), out Keys key))
+                // key.<键名>            → 全局逐键阈值（上游既有写法，行为不变）
+                // key.<设备短id>.<键名>  → 只在那把键盘上生效（本版新增）
+                // 键名是 KeysHelper.Stringify 的产物，不含 '.'，所以按第一个 '.' 拆是安全的。
+                string rest = settingName.Substring("key.".Length);
+                string deviceId = null;
+                int dot = rest.IndexOf('.');
+                if (dot >= 0)
+                {
+                    deviceId = rest.Substring(0, dot).Trim().ToLowerInvariant();
+                    rest = rest.Substring(dot + 1);
+                }
+                if (!KeysHelper.TryGetKey(rest, out Keys key))
                 {
                     MessageBox.Show("Config file contains setting '" + setting + "', which names an invalid key.", "KeyboardChatterBlocker Configuration Error", MessageBoxButtons.OK);
                     return;
                 }
-                KeysToChatterTime[key] = uint.Parse(settingValue);
+                uint value = uint.Parse(settingValue);
+                if (deviceId == null)
+                {
+                    KeysToChatterTime[key] = value;
+                }
+                else
+                {
+                    AcceleratedKeyMap<uint?> perDevice;
+                    if (!KeysToChatterTimeByDevice.TryGetValue(deviceId, out perDevice))
+                    {
+                        perDevice = new AcceleratedKeyMap<uint?>();
+                        KeysToChatterTimeByDevice[deviceId] = perDevice;
+                    }
+                    perDevice[key] = value;
+                }
                 return;
             }
             switch (settingName)
@@ -291,6 +317,19 @@ namespace KeyboardChatterBlocker
                 }
                 result.Append("key.").Append(chatterTimes.Key.Stringify()).Append(": ").Append(chatterTimes.Value.Value).Append("\n");
             }
+            // 逐键盘的覆盖：key.<设备短id>.<键名>。上游读到会忽略（它的 key. 分支解析不出这种键名）。
+            foreach (KeyValuePair<string, AcceleratedKeyMap<uint?>> perDevice in KeysToChatterTimeByDevice)
+            {
+                foreach (KeyValuePair<Keys, uint?> chatterTimes in perDevice.Value.MainDictionary)
+                {
+                    if (!chatterTimes.Value.HasValue)
+                    {
+                        continue;
+                    }
+                    result.Append("key.").Append(perDevice.Key).Append(".").Append(chatterTimes.Key.Stringify())
+                        .Append(": ").Append(chatterTimes.Value.Value).Append("\n");
+                }
+            }
             if (AutoDisablePrograms.Count > 0)
             {
                 result.Append("auto_disable_programs: ").Append(string.Join("/", AutoDisablePrograms)).Append("\n");
@@ -381,6 +420,87 @@ namespace KeyboardChatterBlocker
         /// A mapping of keys to their allowed chatter time, in milliseconds. If HasValue is false, use global chatter time limit.
         /// </summary>
         public AcceleratedKeyMap<uint?> KeysToChatterTime = new AcceleratedKeyMap<uint?>();
+
+        /// <summary>
+        /// 逐键盘的阈值覆盖，键是设备短 id（见 UI/KeyboardDevices.ShortId），值同 <see cref="KeysToChatterTime"/>。
+        /// <para>
+        /// 查找顺序：**本键盘的覆盖 → <see cref="KeysToChatterTime"/>（全局逐键）→
+        /// <see cref="GlobalChatterTimeLimit"/>（全局默认）**，逐层退让。
+        /// 不配任何覆盖时，行为与没有这个字段时完全一致。
+        /// </para>
+        /// <para>
+        /// ⚠ 鼠标伪键（<c>mouse_left</c> 等）没有键盘归属，永远走全局档。
+        /// </para>
+        /// </summary>
+        public Dictionary<string, AcceleratedKeyMap<uint?>> KeysToChatterTimeByDevice
+            = new Dictionary<string, AcceleratedKeyMap<uint?>>();
+
+        /// <summary>
+        /// 当前事件来自哪把键盘（设备短 id）。由 UI 层赋值；未赋值或返回 null 时按「没有设备信息」处理。
+        /// <para>
+        /// ⚠ 跑在输入路径上，必须极快返回（UI 层实现只是读一个缓存字段）。
+        /// ⚠ 这个归属是**滞后一次事件**的近似值 —— 钩子回调永远早于 Raw Input，
+        /// 详见 UI/KeyboardDevices 的说明。
+        /// </para>
+        /// </summary>
+        public Func<string> CurrentDeviceIdProvider;
+
+        /// <summary>取当前设备短 id，取不到返回 null。</summary>
+        private string CurrentDeviceId()
+        {
+            Func<string> provider = CurrentDeviceIdProvider;
+            if (provider == null)
+            {
+                return null;
+            }
+            try
+            {
+                return provider();
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        /// <summary>有没有哪把键盘单独配了鼠标伪键的阈值。鼠标伪键本身没有键盘归属，但配置里可能写了。</summary>
+        private bool AnyDeviceHasMouseKey()
+        {
+            Keys[] mouseKeys = new[]
+            {
+                KeysHelper.KEY_MOUSE_LEFT, KeysHelper.KEY_MOUSE_RIGHT, KeysHelper.KEY_MOUSE_MIDDLE,
+                KeysHelper.KEY_MOUSE_FORWARD, KeysHelper.KEY_MOUSE_BACKWARD, KeysHelper.KEY_WHEEL_CHANGE,
+            };
+            foreach (AcceleratedKeyMap<uint?> map in KeysToChatterTimeByDevice.Values)
+            {
+                foreach (Keys key in mouseKeys)
+                {
+                    if (map[key].HasValue)
+                    {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        /// <summary>按「本键盘覆盖 → 全局逐键」取阈值；都没配返回 null（由调用方回落到全局默认）。</summary>
+        private uint? LookupChatterTime(Keys key, string deviceId)
+        {
+            if (deviceId != null)
+            {
+                AcceleratedKeyMap<uint?> perDevice;
+                if (KeysToChatterTimeByDevice.TryGetValue(deviceId, out perDevice))
+                {
+                    uint? overridden = perDevice[key];
+                    if (overridden.HasValue)
+                    {
+                        return overridden;
+                    }
+                }
+            }
+            return KeysToChatterTime[key];
+        }
 
         /// <summary>
         /// A mapping of keys to a bool indicating whether a down-stroke was blocked (so the up-stroke can be blocked as well).
@@ -480,6 +600,34 @@ namespace KeyboardChatterBlocker
         public AcceleratedKeyMap<int> StatsKeyChatter = new AcceleratedKeyMap<int>();
 
         /// <summary>
+        /// 逐键盘的统计，键是设备短 id。全局那份（上面两个）仍然是**合计**，照旧写进
+        /// <c>blocker_stats.csv</c> 的老格式行；这两份另写 <c>dev:&lt;短id&gt;</c> 开头的行。
+        /// </summary>
+        public Dictionary<string, AcceleratedKeyMap<int>> StatsKeyCountByDevice
+            = new Dictionary<string, AcceleratedKeyMap<int>>();
+        public Dictionary<string, AcceleratedKeyMap<int>> StatsKeyChatterByDevice
+            = new Dictionary<string, AcceleratedKeyMap<int>>();
+
+        /// <summary>设备未知时的落点：累加进去等于丢弃，省得每个调用点都写 null 判断。</summary>
+        private readonly AcceleratedKeyMap<int> _discardedStats = new AcceleratedKeyMap<int>();
+
+        /// <summary>取某把键盘的统计 map。</summary>
+        private AcceleratedKeyMap<int> DeviceStats(Dictionary<string, AcceleratedKeyMap<int>> store, string deviceId)
+        {
+            if (deviceId == null)
+            {
+                return _discardedStats;
+            }
+            AcceleratedKeyMap<int> map;
+            if (!store.TryGetValue(deviceId, out map))
+            {
+                map = new AcceleratedKeyMap<int>();
+                store[deviceId] = map;
+            }
+            return map;
+        }
+
+        /// <summary>
         /// A mapping of keys to a bool indicating if they are thought to be down (to catch holding down a key and not bork it).
         /// </summary>
         public AcceleratedKeyMap<bool> KeyIsDown = new AcceleratedKeyMap<bool>();
@@ -559,6 +707,16 @@ namespace KeyboardChatterBlocker
                 int chatterTotal = StatsKeyChatter[keyData.Key];
                 output.Append($"{keyData.Key.Stringify()},{keyData.Value},{chatterTotal},\n");
             }
+            // 逐键盘的明细。首字段以 dev: 开头 —— 上游的读取代码会对它 Enum.TryParse 失败然后跳过，
+            // 所以那份文件两边都能读，全局行一个字节都没变。
+            foreach (KeyValuePair<string, AcceleratedKeyMap<int>> perDevice in StatsKeyCountByDevice)
+            {
+                foreach (KeyValuePair<Keys, int> keyData in perDevice.Value.MainDictionary)
+                {
+                    int chatterTotal = StatsKeyChatterByDevice[perDevice.Key][keyData.Key];
+                    output.Append($"dev:{perDevice.Key},{keyData.Key.Stringify()},{keyData.Value},{chatterTotal},\n");
+                }
+            }
             try
             {
                 File.WriteAllText(BlockerStatsFilePath, output.ToString());
@@ -599,6 +757,33 @@ namespace KeyboardChatterBlocker
                     continue;
                 }
                 string[] parts = line.Split(',');
+                // 逐键盘明细：dev:<短id>,<键名>,<次数>,<抖动次数>,
+                if (parts.Length >= 4 && parts[0].StartsWith("dev:"))
+                {
+                    string deviceId = parts[0].Substring("dev:".Length).Trim().ToLowerInvariant();
+                    if (deviceId.Length == 0
+                        || !KeysHelper.TryGetKey(parts[1], out Keys devKey)
+                        || !int.TryParse(parts[2], out int devCount)
+                        || !int.TryParse(parts[3], out int devChatter))
+                    {
+                        continue;
+                    }
+                    AcceleratedKeyMap<int> counts;
+                    if (!StatsKeyCountByDevice.TryGetValue(deviceId, out counts))
+                    {
+                        counts = new AcceleratedKeyMap<int>();
+                        StatsKeyCountByDevice[deviceId] = counts;
+                    }
+                    AcceleratedKeyMap<int> chatters;
+                    if (!StatsKeyChatterByDevice.TryGetValue(deviceId, out chatters))
+                    {
+                        chatters = new AcceleratedKeyMap<int>();
+                        StatsKeyChatterByDevice[deviceId] = chatters;
+                    }
+                    counts[devKey] = devCount;
+                    chatters[devKey] = devChatter;
+                    continue;
+                }
                 if (parts.Length < 3
                     || !Enum.TryParse(parts[0], out Keys key)
                     || !int.TryParse(parts[1], out int keyCount)
@@ -623,7 +808,9 @@ namespace KeyboardChatterBlocker
             {
                 return true;
             }
-            uint? chatterTimeLimit = KeysToChatterTime[key];
+            // 这次按键来自哪把键盘（可能为 null —— 未知，或鼠标伪键）。逐键盘阈值与统计都要用。
+            string deviceId = CurrentDeviceId();
+            uint? chatterTimeLimit = LookupChatterTime(key, deviceId);
             if (!ShouldBlockAll && !OtherKeyResetsTimeout && GlobalChatterTimeLimit == 0 && !chatterTimeLimit.HasValue) // Explicit no reason to listen to this key = discard fast, no tracking.
             {
                 return true;
@@ -637,6 +824,7 @@ namespace KeyboardChatterBlocker
             if (GlobalChatterTimeLimit != 0 || chatterTimeLimit.HasValue) // Only track stats if it's a monitored key.
             {
                 StatsKeyCount[key]++;
+                DeviceStats(StatsKeyCountByDevice, deviceId)[key]++;
             }
             ulong timeNow = GetTickCount64();
             ulong timeLast = MeasureMode == MeasureFrom.Release ? KeysToLastReleaseTime[key] : KeysToLastPressTime[key];
@@ -669,6 +857,7 @@ namespace KeyboardChatterBlocker
             }
             // All else = not enough time elapsed, deny it.
             StatsKeyChatter[key]++;
+            DeviceStats(StatsKeyChatterByDevice, deviceId)[key]++;
             KeysWereDownBlocked[key] = true;
             // 挂上待救援标记：若这次其实是长按，ProcessHoldRescue 会把它补发回去。
             // 只对键盘键生效（鼠标伪键的码值 >= 256，且没有扫描码可言）。
