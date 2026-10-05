@@ -587,6 +587,9 @@ namespace KeyboardChatterBlocker
             {
                 Text = Strings.TestReset,
                 Size = new Size(P(110), P(Metrics.ButtonHeight)),
+                // 本页的每一次按键都是测试数据：空格/回车不能被这个按钮吃掉，
+                // 鼠标点它之后焦点也必须留在键盘图上
+                Focusable = false,
             };
             TestClearMarksButton.Click += TestClearMarksButton_Click;
             card.Controls.Add(TestClearMarksButton);
