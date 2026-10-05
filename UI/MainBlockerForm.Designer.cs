@@ -438,7 +438,7 @@ namespace KeyboardChatterBlocker
             ChatterLogGrid = grid;
 
             CardPanel logCard = MakeCard(Strings.LogTitle, Strings.LogHint, grid);
-            LogKeyboardFilter = MakeKeyboardFilter(logCard, 0, true);
+            LogKeyboardFilter = MakeKeyboardFilter(logCard, 0);
             LogKeyboardFilter.SelectedIndexChanged += (s, e) => RebuildLogRows();
             page.Controls.Add(logCard);
             return page;
@@ -458,7 +458,7 @@ namespace KeyboardChatterBlocker
             StatsGrid = grid;
 
             CardPanel statsCard = MakeCard(Strings.StatsTitle, Strings.StatsHint, grid);
-            StatsKeyboardFilter = MakeKeyboardFilter(statsCard, 0, true);
+            StatsKeyboardFilter = MakeKeyboardFilter(statsCard, 0);
             StatsKeyboardFilter.SelectedIndexChanged += (s, e) => PushStatsToGrid();
             page.Controls.Add(statsCard);
             return page;
@@ -488,7 +488,7 @@ namespace KeyboardChatterBlocker
             AddKeyButton.Click += AddKeyButton_Click;
 
             // 右上角：筛选框占最右，添加按钮排在它左边
-            KeysKeyboardFilter = MakeKeyboardFilter(card, 0, true);
+            KeysKeyboardFilter = MakeKeyboardFilter(card, 0);
             KeysKeyboardFilter.SelectedIndexChanged += (s, e) => PushKeysToGrid();
             int filterWidth = KeysKeyboardFilter.Width + P(8);
             card.Controls.Add(AddKeyButton);
@@ -633,7 +633,7 @@ namespace KeyboardChatterBlocker
 
             // 右上角：筛选框占最右，「重置」排在它左边。筛选框同样不可获焦点 ——
             // 这页的每一次按键都必须留给键盘图。
-            TestKeyboardFilter = MakeKeyboardFilter(card, 0, false);
+            TestKeyboardFilter = MakeKeyboardFilter(card, 0);
             TestKeyboardFilter.SelectedIndexChanged += (s, e) => TestClearMarksButton_Click(null, System.EventArgs.Empty);
             int testFilterWidth = TestKeyboardFilter.Width + P(8);
             card.Controls.Add(TestClearMarksButton);
@@ -913,6 +913,8 @@ namespace KeyboardChatterBlocker
                 Text = Strings.DevicesIdentify,
                 Dock = DockStyle.Fill,
                 Margin = new Padding(0, P(6), P(12), P(6)),
+                // 这页的交互就是「按下某个键盘上的键」，按钮不能把空格/回车吃掉
+                Focusable = false,
             };
             DevicesIdentifyButton.Click += DevicesIdentifyButton_Click;
 
@@ -1310,13 +1312,14 @@ namespace KeyboardChatterBlocker
         /// <see cref="RefreshKeyboardFilters"/> 在读出新键盘后填充。
         /// </para>
         /// </summary>
-        private static ModernComboBox MakeKeyboardFilter(CardPanel card, int extraRight, bool focusable)
+        private static ModernComboBox MakeKeyboardFilter(CardPanel card, int extraRight)
         {
             ModernComboBox combo = new ModernComboBox
             {
                 Size = new Size(P(170), P(28)),
-                // 这是键盘工具：筛选框绝不能把按键吃掉（键盘测试页尤其致命）
-                Focusable = focusable,
+                // 这是键盘工具：筛选框绝不能把按键吃掉 —— 空格/回车必须留给下方的键盘操作，
+                // 否则在日志/统计/按键配置三页上敲键盘会被它抢走。只能用鼠标点开。
+                Focusable = false,
             };
             combo.Items.Add(Strings.FilterAllKeyboards);
             combo.SelectedIndex = 0;
