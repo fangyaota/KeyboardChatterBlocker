@@ -146,6 +146,11 @@ namespace KeyboardChatterBlocker
             // 放在 InitializeComponent 之后订阅，确保 TestKeyboardMap 已经建好。
             Program.Interceptor.KeyEvent += OnInterceptorKeyEvent;
             titleBar.PanelToggle += () => SetKeyboardPanelVisible(!_keyboardPanelVisible);
+            titleBar.PinToggle += () =>
+            {
+                ApplyAlwaysOnTop(!TopMost);
+                Program.Blocker.SaveConfig();   // 置顶是「设一次就一直想要」的偏好，记下来
+            };
             SetKeyboardPanelVisible(true);
             versionAboutLabel.Text = string.Format(Strings.AboutVersionFormat, Application.ProductVersion);
             EnableEdgeResize(this);
@@ -153,7 +158,12 @@ namespace KeyboardChatterBlocker
             FormClosing += MainBlockerForm_FormClosing;
             // 必须在 Shown 之后再做一次：Load 触发时窗体还没显示，焦点尚未分配，
             // 那时 IsEditing 还是 false，什么都拦不到。
-            Shown += (s, e) => BlurThresholdBox();
+            Shown += (s, e) =>
+            {
+                BlurThresholdBox();
+                // 置顶状态在窗口真正显示之后再套用，避免被 WinForms 的显示流程覆盖掉
+                ApplyAlwaysOnTop(Program.Blocker.AlwaysOnTop);
+            };
         }
 
         /// <summary>
@@ -1630,6 +1640,17 @@ namespace KeyboardChatterBlocker
         /// 重建设备行。设备只在第一次被按到时才出现，数量很少（个位数），
         /// 所以每次变化整套重建，省掉增删同步的麻烦。
         /// </summary>
+        /// <summary>套用「强制最上层显示」：窗口状态、按钮高亮、配置字段三处保持一致。</summary>
+        private void ApplyAlwaysOnTop(bool on)
+        {
+            TopMost = on;
+            Program.Blocker.AlwaysOnTop = on;
+            if (titleBar != null)
+            {
+                titleBar.PinToggleActive = on;
+            }
+        }
+
         private void RebuildDeviceRows()
         {
             if (DevicesListPanel == null)

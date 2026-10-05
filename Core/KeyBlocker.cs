@@ -205,6 +205,10 @@ namespace KeyboardChatterBlocker
                     AutoDisableOnFullscreen = SettingAsBool(settingValue);
                     break;
                 // 本版新增。上游程序读到这一行会忽略（switch 里没有对应分支）。
+                // 本版新增。上游程序读到这一行会忽略（switch 里没有对应分支）。
+                case "always_on_top":
+                    AlwaysOnTop = SettingAsBool(settingValue);
+                    break;
                 case "close_to_tray":
                     CloseToTray = SettingAsBool(settingValue);
                     break;
@@ -345,6 +349,7 @@ namespace KeyboardChatterBlocker
             result.Append("exclude_injected: ").Append(ExcludeInjected ? "true" : "false").Append("\n");
             result.Append("hold_rescue_time: ").Append(HoldRescueTime).Append("\n");
             result.Append("close_to_tray: ").Append(CloseToTray ? "true" : "false").Append("\n");
+            result.Append("always_on_top: ").Append(AlwaysOnTop ? "true" : "false").Append("\n");
             result.Append("\n");
             foreach (KeyValuePair<string, string> pair in Hotkeys)
             {
@@ -650,6 +655,9 @@ namespace KeyboardChatterBlocker
         /// </para>
         /// </summary>
         public bool CloseToTray = true;
+
+        /// <summary>窗口是否强制最上层显示（标题栏上的图钉按钮）。</summary>
+        public bool AlwaysOnTop = false;
 
         /// <summary>
         /// 自动禁用程序列表的判定方式（本版新增，默认 true）。

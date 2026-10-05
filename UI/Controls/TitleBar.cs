@@ -14,6 +14,8 @@ namespace KeyboardChatterBlocker.UI.Controls
         Restore,
         /// <summary>右侧键盘读数边栏的显示/隐藏开关。</summary>
         Panel,
+        /// <summary>「强制最上层显示」的开关。</summary>
+        Pin,
         Close
     }
 
@@ -26,6 +28,7 @@ namespace KeyboardChatterBlocker.UI.Controls
         private readonly CaptionButton _maxButton;
         private readonly CaptionButton _closeButton;
         private readonly CaptionButton _panelButton;
+        private readonly CaptionButton _pinButton;
         private readonly Panel _panelGap;
         private Icon _icon;
 
@@ -45,11 +48,13 @@ namespace KeyboardChatterBlocker.UI.Controls
             // 右侧读数边栏的开关。用一段不绘制的间隔把它和三个窗口按钮分开，
             // 免得看起来像第四个窗口按钮。
             _panelButton = new CaptionButton(CaptionButtonKind.Panel) { Dock = DockStyle.Right, Width = Metrics.Px(42) };
+            _pinButton = new CaptionButton(CaptionButtonKind.Pin) { Dock = DockStyle.Right, Width = Metrics.Px(42) };
             _panelGap = new Panel { Dock = DockStyle.Right, Width = Metrics.Px(16), BackColor = ThemeManager.Current.WindowBg };
 
             // WinForms 停靠规则：Controls 集合里「最后添加」的控件最先贴边，落在最右侧。
             // 所以「从左到右」的视觉顺序，正好等于「添加顺序」。
-            // 期望： [边栏开关] [间隔] [最小化] [最大化] [关闭]
+            // 期望： [置顶] [边栏开关] [间隔] [最小化] [最大化] [关闭]
+            Controls.Add(_pinButton);
             Controls.Add(_panelButton);
             Controls.Add(_panelGap);
             Controls.Add(_minButton);
@@ -60,6 +65,7 @@ namespace KeyboardChatterBlocker.UI.Controls
             _maxButton.Click += (s, e) => ToggleMaximize();
             _closeButton.Click += (s, e) => FindForm()?.Close();
             _panelButton.Click += (s, e) => PanelToggle?.Invoke();
+            _pinButton.Click += (s, e) => PinToggle?.Invoke();
 
             MouseDown += (s, e) => { if (e.Button == MouseButtons.Left) { (FindForm() as ModernForm)?.DragWindow(); } };
             DoubleClick += (s, e) => ToggleMaximize();
@@ -87,6 +93,16 @@ namespace KeyboardChatterBlocker.UI.Controls
             get { return _panelButton.Active; }
             // 注意：必须让按钮自己重绘 —— 按钮是独立子控件，Invalidate 标题栏不会连带重绘它
             set { if (_panelButton.Active != value) { _panelButton.Active = value; _panelButton.Invalidate(); } }
+        }
+
+        /// <summary>「强制最上层显示」的开关被点击。</summary>
+        public event Action PinToggle;
+
+        /// <summary>当前是否置顶（按钮会跟着高亮）。</summary>
+        public bool PinToggleActive
+        {
+            get { return _pinButton.Active; }
+            set { if (_pinButton.Active != value) { _pinButton.Active = value; _pinButton.Invalidate(); } }
         }
 
         /// <summary>最大化/还原按钮，供外部同步状态。</summary>
@@ -216,6 +232,17 @@ namespace KeyboardChatterBlocker.UI.Controls
                         {
                             g.FillRectangle(b, new Rectangle(body.Right - strip - 1, body.Top + 1, strip, body.Height - 1));
                         }
+                        break;
+                    }
+                    case CaptionButtonKind.Pin:
+                    {
+                        // 顶部一条横线 + 向上的箭头 = 「钉在最上层」
+                        int topY = cy - s + Metrics.Px(2);
+                        int head = Math.Max(2, s / 2);
+                        g.DrawLine(pen, cx - s, cy - s, cx + s, cy - s);
+                        g.DrawLine(pen, cx, topY, cx, cy + s);
+                        g.DrawLine(pen, cx - head, topY + head, cx, topY);
+                        g.DrawLine(pen, cx + head, topY + head, cx, topY);
                         break;
                     }
                     case CaptionButtonKind.Restore:
