@@ -4,6 +4,8 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.MemoryMappedFiles;
 using System.Text;
+using System.Text.RegularExpressions;
+using Microsoft.Win32;
 using System.Windows.Forms;
 
 namespace KeyboardChatterBlocker
@@ -201,6 +203,7 @@ namespace KeyboardChatterBlocker
                 }
                 if (changed)
                 {
+                    DisambiguateLabels();
                     Action handler = DevicesChanged;
                     if (handler != null) { handler(); }
                 }
@@ -223,13 +226,95 @@ namespace KeyboardChatterBlocker
             }
         }
 
-        /// <summary>设备路径 → 界面显示名。</summary>
+        /// <summary>设备路径 → 界面显示名。优先用系统给的可读名，取不到才退回机器码。</summary>
         public static string BuildLabel(string path)
         {
             if (string.IsNullOrEmpty(path))
             {
                 return "未知键盘";
             }
+            string friendly = FriendlyName(path);
+            return string.IsNullOrEmpty(friendly) ? RawLabel(path) : friendly;
+        }
+
+        /// <summary>
+        /// 从注册表取设备可读名。
+        /// <para>
+        /// Raw Input 的设备路径能机械地推出设备实例 ID：
+        /// <c>\\?\HID#VID_1A2C&amp;PID_7FFF&amp;MI_00#7&amp;bdf5368&amp;0&amp;0000#{guid}</c>
+        /// → <c>HID\VID_1A2C&amp;PID_7FFF&amp;MI_00\7&amp;bdf5368&amp;0&amp;0000</c>，
+        /// 正好是 <c>HKLM\SYSTEM\CurrentControlSet\Enum</c> 下的键名，不必用 SetupAPI。
+        /// </para>
+        /// <para>
+        /// 实测这几把键盘的 <c>FriendlyName</c> 都是空的，实际可读名在 <c>DeviceDesc</c> 里，
+        /// 形如 <c>@keyboard.inf,%hid.keyboarddevice%;HID Keyboard Device</c> ——
+        /// 分号后那段是兜底文本（英文）。
+        /// </para>
+        /// </summary>
+        private static string FriendlyName(string path)
+        {
+            string instance = InstanceIdOf(path);
+            if (instance == null)
+            {
+                return null;
+            }
+            try
+            {
+                using (RegistryKey key = Registry.LocalMachine.OpenSubKey(
+                    @"SYSTEM\CurrentControlSet\Enum\" + instance))
+                {
+                    if (key == null)
+                    {
+                        return null;
+                    }
+                    string name = key.GetValue("FriendlyName") as string;
+                    if (string.IsNullOrWhiteSpace(name))
+                    {
+                        name = key.GetValue("DeviceDesc") as string;
+                    }
+                    if (string.IsNullOrWhiteSpace(name))
+                    {
+                        return null;
+                    }
+                    // "@keyboard.inf,%hid.keyboarddevice%;HID Keyboard Device" → 取最后一段
+                    if (name.StartsWith("@", StringComparison.Ordinal))
+                    {
+                        int semi = name.LastIndexOf(';');
+                        if (semi >= 0)
+                        {
+                            name = name.Substring(semi + 1);
+                        }
+                    }
+                    name = name.Trim();
+                    return name.Length == 0 || name.StartsWith("@", StringComparison.Ordinal) ? null : name;
+                }
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        /// <summary>设备路径 → 设备实例 ID（注册表键名），推不出来返回 null。</summary>
+        private static string InstanceIdOf(string path)
+        {
+            string s = path;
+            int brace = s.IndexOf("#{", StringComparison.Ordinal);
+            if (brace > 0)
+            {
+                s = s.Substring(0, brace);
+            }
+            s = s.TrimStart('\\', '?');
+            if (s.Length == 0 || s.IndexOf('#') < 0)
+            {
+                return null;
+            }
+            return s.Replace('#', '\\');
+        }
+
+        /// <summary>取不到可读名时的兜底：设备路径里的辨识信息。</summary>
+        private static string RawLabel(string path)
+        {
             string s = path;
             int brace = s.IndexOf("#{", StringComparison.Ordinal);
             if (brace > 0)
@@ -238,7 +323,6 @@ namespace KeyboardChatterBlocker
             }
             s = s.TrimStart('\\', '?', '\\');
             string[] parts = s.Split(new[] { '#' }, StringSplitOptions.RemoveEmptyEntries);
-            // 形如 VID_1A2C&PID_7FFF 的那一段最有辨识度
             foreach (string part in parts)
             {
                 if (part.StartsWith("VID_", StringComparison.OrdinalIgnoreCase))
@@ -246,12 +330,43 @@ namespace KeyboardChatterBlocker
                     return part.Replace("&", " & ");
                 }
             }
-            // 笔记本内置键盘走 ACPI，没有 VID/PID
             if (parts.Length >= 2)
             {
                 return parts[0] + " " + parts[1];
             }
             return parts.Length > 0 ? parts[0] : s;
+        }
+
+        /// <summary>从路径里抠出 <c>VID_xxxx&amp;PID_yyyy</c> 里的 <c>xxxx:yyyy</c>，用于重名消歧。</summary>
+        private static string VendorProductOf(string path)
+        {
+            Match match = Regex.Match(path ?? "", @"vid_([0-9a-f]{4}).*?pid_([0-9a-f]{4})",
+                RegexOptions.IgnoreCase);
+            return match.Success ? (match.Groups[1].Value + ":" + match.Groups[2].Value).ToUpperInvariant() : null;
+        }
+
+        /// <summary>
+        /// 系统给的可读名常常是共用的（好几个设备都叫 "HID Keyboard Device"），
+        /// 光看名字分不出是哪一把。重名的一律补上 VID:PID。
+        /// </summary>
+        private static void DisambiguateLabels()
+        {
+            Dictionary<string, int> counts = new Dictionary<string, int>();
+            foreach (KeyboardDevice device in _active)
+            {
+                int n;
+                counts.TryGetValue(device.Label, out n);
+                counts[device.Label] = n + 1;
+            }
+            foreach (KeyboardDevice device in _active)
+            {
+                if (counts[device.Label] <= 1)
+                {
+                    continue;
+                }
+                string vp = VendorProductOf(device.Path);
+                device.Label = vp == null ? device.Label : device.Label + " (" + vp + ")";
+            }
         }
     }
 }

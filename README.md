@@ -198,8 +198,16 @@ AcceleratedKeyMap.cs  KeysHelper.cs  FullScreenDetectHelper.cs  KBCUtils.cs  Key
     **默认行为完全不变**：不配置时所有键盘都参与拦截，配置里也不会多出这个键。
 
     界面上是一个设备列表（只列**按出过按键**的键盘，虚拟设备本来就不发按键，列出来只会碍事），
-    配一个「识别」按钮：点一下再按某个键盘，对应那行会高亮 —— 设备名是
-    `\\?\hid#vid_1a2c&pid_7fff&...` 这种机器码，没这个就只能靠猜。
+    显示的是**系统给的可读名**（`HID Keyboard Device` / `Standard PS/2 Keyboard`），
+    从 `HKLM\SYSTEM\CurrentControlSet\Enum` 里按设备实例 ID 读出来 ——
+    Raw Input 的设备路径能机械地推出这个 ID，不必用 SetupAPI。
+
+    > 可读名有个坑：**好几把键盘会共用同一个名字**（实测这台机器上三个设备都叫
+    > `HID Keyboard Device`）。所以重名的一律补上 VID:PID 消歧，
+    > 变成 `HID Keyboard Device (1A2C:7FFF)` 这种。
+
+    另外配一个「识别」按钮：点一下再按某个键盘，对应那行会高亮 ——
+    名字再可读，也没法保证你一定分得清哪把是哪把。
 
     > **为什么设备识别跑在独立进程里。** 低级钩子拿到的 `KBDLLHOOKSTRUCT` 没有设备标识，
     > 唯一能区分键盘的途径是 Raw Input 的 `WM_INPUT`（它带 `hDevice`）。
@@ -362,6 +370,7 @@ PerMonitorV2 下 WinForms 会把 `AutoScaleDimensions` 改写成当前 DPI，导
 | 进程内注册 Raw Input 的后果 | 同一进程里注册前后对比：注册前钩子被调用且拦得住（`KeyEvent +8 拦截 +2`）；注册后 `KeyEvent +0 拦截 +0`（钩子彻底哑掉）；注销注册后立刻恢复。换独立线程也一样，故为进程级 |
 | 独立进程做设备识别 | 主进程钩子在窗体正常/最小化/恢复前台三种状态下均 `KeyEvent +8 拦截 +2~3`（钩子健康）；辅助进程 1 个、无窗口、父进程为主进程；两把键盘被识别成两个不同设备（`vid_1a2c&pid_7fff` / `acpi msft0001`） |
 | 白名单过滤 | 白名单为空（默认）→ 拦截 +3；白名单填一个不存在的设备 → 拦截 +0；再清空 → 拦截 +3 |
+| 设备可读名 | 外接键盘 → `HID Keyboard Device`，笔记本内置 → `Standard PS/2 Keyboard`；伪造路径 → 退回机器码兜底。同一名字的两台设备消歧后 → `HID Keyboard Device (1A2C:7FFF)` / `HID Keyboard Device (30FA:1701)` |
 | 真实游戏（A Dance of Fire and Ice） | 「先开本程序、后开游戏」这个原本失败的顺序，改用带抢链首的构建后抖动消失（用户实测） |
 | 右侧读数边栏 | 读数随按键实时更新；收起后内容区自动填满，标题栏开关的颜色跟随状态变化（展开=强调色、收起=灰） |
 | 关闭到托盘 | 走真实 ✕ 路径（`Form.Close()`）时 `CloseReason=UserClosing, Cancel=True`，窗口隐藏且托盘图标出现；`close_to_tray: false` 时正常退出；与 `hide_in_system_tray` 互相独立 |
