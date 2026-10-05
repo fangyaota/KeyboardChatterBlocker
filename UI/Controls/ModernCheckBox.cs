@@ -12,6 +12,27 @@ namespace KeyboardChatterBlocker.UI.Controls
     public class ModernCheckBox : CheckBox
     {
         private bool _hover;
+        private bool _foreignMark;
+
+        /// <summary>
+        /// 「这件事有人做了，但不是我们」的标记：不画勾，改画一个实心方块。
+        /// <para>
+        /// 用在「开机自启」上 —— 启动文件夹里那个 .lnk 存在，但指向的是别的程序
+        /// （同名快捷方式被别的软件占了）。此时 <see cref="CheckBox.Checked"/> 保持
+        /// <c>false</c>，让用户一眼看出「没勾是因为不是我注册的」，
+        /// 而不是「我没开」。点一下仍然会把快捷方式改成指向本程序。
+        /// </para>
+        /// </summary>
+        public bool ForeignMark
+        {
+            get { return _foreignMark; }
+            set
+            {
+                if (_foreignMark == value) { return; }
+                _foreignMark = value;
+                Invalidate();
+            }
+        }
 
         public ModernCheckBox()
         {
@@ -65,6 +86,13 @@ namespace KeyboardChatterBlocker.UI.Controls
                 Drawing.FillRoundedRect(g, boxRect, radius, accent);
                 DrawCheckMark(g, boxRect, Enabled ? p.AccentText : p.TextDisabled);
             }
+            else if (_foreignMark)
+            {
+                // 空勾选框 + 正中一枚实心方块：看得出「这里有事」，但没有打勾
+                Color border = Enabled ? p.CardBorderStrong : p.CardBorder;
+                Drawing.FillRoundedRect(g, boxRect, radius, p.ControlBg, border, Metrics.Px(1));
+                DrawSquareMark(g, boxRect, Enabled ? p.TextMuted : p.TextDisabled);
+            }
             else
             {
                 Color fill = Enabled ? (_hover ? p.ControlHover : p.ControlBg) : Palette.Mix(p.ControlBg, p.CardBg, 0.5f);
@@ -76,6 +104,18 @@ namespace KeyboardChatterBlocker.UI.Controls
             Rectangle textRect = new Rectangle(textLeft, 0, Math.Max(0, Width - textLeft), Height);
             Color textColor = Enabled ? p.Text : p.TextDisabled;
             Drawing.DrawText(g, Text, Font, textColor, textRect, ContentAlignment.MiddleLeft, clearType: false);
+        }
+
+        /// <summary>「不是我们注册的」标记：勾选框正中一枚实心方块。</summary>
+        private void DrawSquareMark(Graphics g, Rectangle boxRect, Color color)
+        {
+            int w = Math.Max(2, (int)(boxRect.Width * 0.42f));
+            int x = boxRect.Left + (boxRect.Width - w) / 2;
+            int y = boxRect.Top + (boxRect.Height - w) / 2;
+            using (SolidBrush brush = new SolidBrush(color))
+            {
+                g.FillRectangle(brush, x, y, w, w);
+            }
         }
 
         private void DrawCheckMark(Graphics g, Rectangle boxRect, Color color)

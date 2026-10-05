@@ -319,6 +319,15 @@ namespace KeyboardChatterBlocker
         /// <summary>最小的同键间隔。</summary>
         private long _testMinIntervalMs = long.MaxValue;
 
+        /// <summary>
+        /// 同键间隔的采样上限（毫秒）。超过它的间隔直接丢弃，不进平均/最小值的样本。
+        /// <para>
+        /// 抖动是毫秒级的（几毫秒到几十毫秒）。隔了一秒以上的两次按下是「又按了一下」，
+        /// 跟抖动无关；收进样本只会把平均间隔拉成没有意义的数字。
+        /// </para>
+        /// </summary>
+        private const long TestIntervalCapMs = 1000;
+
         private readonly HashSet<Keys> _testDownKeys = new HashSet<Keys>();
         private readonly Dictionary<Keys, ulong> _testLastPressOfKey = new Dictionary<Keys, ulong>();
         private ulong _testLastPressAny;
@@ -352,7 +361,10 @@ namespace KeyboardChatterBlocker
                 if (!_testDownKeys.Contains(key))
                 {
                     _testTotalPresses++;
-                    if (_testSameKeyMs >= 0)
+                    // 超过 1 秒的间隔不算样本：那是「隔了一会儿又按了一下」，不是抖动。
+                    // 收进来的话，随便停一会儿再按一下就能把平均间隔拉到几百毫秒，
+                    // 这个数字就彻底没用了。
+                    if (_testSameKeyMs >= 0 && _testSameKeyMs <= TestIntervalCapMs)
                     {
                         _testIntervalSumMs += _testSameKeyMs;
                         _testIntervalCount++;
@@ -533,6 +545,80 @@ namespace KeyboardChatterBlocker
         public static string StartupLinkPath => Environment.GetEnvironmentVariable("appdata") + STARTUP_FOLDER + "KeyboardChatterBlocker.lnk";
 
         /// <summary>
+        /// 让「开机自启」的勾选状态跟启动文件夹里的实际情况对齐。
+        /// <para>
+        /// 不能只看 <c>File.Exists</c>：<c>KeyboardChatterBlocker.lnk</c> 这个名字谁都能占，
+        /// 别的软件、或本程序的另一份拷贝都可能写下它。快捷方式存在但指向的不是当前这个 exe 时，
+        /// 打勾就是在撒谎 —— 开机根本不会启动这里这一份。
+        /// 这种情况保持不勾，并画一个方块标记表示「有东西，但不是我们」。
+        /// </para>
+        /// </summary>
+        private void RefreshStartWithWindowsState()
+        {
+            string target = ReadStartupShortcutTarget(StartupLinkPath);
+            bool ours = target != null && SamePath(target, Application.ExecutablePath);
+
+            // 借用 Loading 抑制 CheckedChanged 里的建/删快捷方式逻辑，用完原样还回去
+            bool wasLoading = Loading;
+            Loading = true;
+            StartWithWindowsCheckbox.Checked = ours;
+            Loading = wasLoading;
+
+            StartWithWindowsCheckbox.ForeignMark = target != null && !ours;
+            if (StartupToolTip != null)
+            {
+                StartupToolTip.SetToolTip(StartWithWindowsCheckbox,
+                    ours ? string.Empty : string.Format(Strings.StartupForeignTip, target ?? "?"));
+            }
+        }
+
+        /// <summary>两个路径是否指向同一个文件（忽略大小写与末尾分隔符）。</summary>
+        private static bool SamePath(string a, string b)
+        {
+            try
+            {
+                return string.Equals(
+                    Path.GetFullPath(a).TrimEnd('\\'),
+                    Path.GetFullPath(b).TrimEnd('\\'),
+                    StringComparison.OrdinalIgnoreCase);
+            }
+            catch (Exception)
+            {
+                return string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
+        /// <summary>
+        /// 读出 .lnk 的 TargetPath。迟绑定 <c>WScript.Shell</c>，与创建快捷方式时用法一致。
+        /// 读不到（文件不存在 / 不是快捷方式 / COM 不可用）一律返回 null。
+        /// </summary>
+        private static string ReadStartupShortcutTarget(string linkPath)
+        {
+            if (!File.Exists(linkPath))
+            {
+                return null;
+            }
+            try
+            {
+                Type shellType = Type.GetTypeFromProgID("WScript.Shell");
+                if (shellType == null)
+                {
+                    return null;
+                }
+                object shell = Activator.CreateInstance(shellType);
+                object shortcut = shellType.InvokeMember("CreateShortcut", BindingFlags.InvokeMethod, null, shell,
+                    new object[] { linkPath });
+                string target = shortcut.GetType().InvokeMember("TargetPath", BindingFlags.GetProperty, null,
+                    shortcut, null) as string;
+                return string.IsNullOrEmpty(target) ? null : target;
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
         /// Event method auto-called when the "Start With Windows" box is touched.
         /// </summary>
         public void StartWithWindowsCheckbox_CheckedChanged(object sender, EventArgs e)
@@ -540,6 +626,12 @@ namespace KeyboardChatterBlocker
             if (Loading)
             {
                 return;
+            }
+            // 用户明确表态了：不管之前那个快捷方式是谁写的，方块标记都不再适用
+            StartWithWindowsCheckbox.ForeignMark = false;
+            if (StartupToolTip != null && StartWithWindowsCheckbox.Checked)
+            {
+                StartupToolTip.SetToolTip(StartWithWindowsCheckbox, string.Empty);
             }
             if (StartWithWindowsCheckbox.Checked)
             {
@@ -778,7 +870,7 @@ namespace KeyboardChatterBlocker
             MeasureFromComboBox.SelectedIndex = Program.Blocker.MeasureMode == KeyBlocker.MeasureFrom.Release ? 1 : 0;
             EnabledCheckbox.Checked = Program.Blocker.IsEnabled;
             SaveStatsCheckbox.Checked = Program.Blocker.SaveStats;
-            StartWithWindowsCheckbox.Checked = File.Exists(StartupLinkPath);
+            RefreshStartWithWindowsState();
             OtherKeyResetsCheckbox.Checked = Program.Blocker.OtherKeyResetsTimeout;
             ExcludeInjectedCheckbox.Checked = Program.Blocker.ExcludeInjected;
             StatsUpdateTimer = new Timer { Interval = StatsRefreshIntervalMs };

@@ -19,6 +19,8 @@
         public const string Milliseconds = "毫秒";
         public const string StartWithWindows = "开机自启";
         public const string StartInTray = "启动时隐藏到托盘";
+        /// <summary>启动文件夹里的 .lnk 存在、但指向的不是本程序时，悬停提示。{0} = 实际指向的路径。</summary>
+        public const string StartupForeignTip = "启动项里的快捷方式指向的不是本程序：\n{0}\n\n勾选会把快捷方式改为指向当前这一份。";
         public const string CloseToTray = "点关闭时隐藏到托盘";
         public const string AutoDisablePrefix = "（已自动禁用：";
         public const string AutoDisableSuffix = "）";

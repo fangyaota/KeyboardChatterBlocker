@@ -49,7 +49,7 @@ AcceleratedKeyMap.cs  KeysHelper.cs  FullScreenDetectHelper.cs  KBCUtils.cs  Key
 鼠标键与滚轮抖动、临时屏蔽组合键、自动禁用程序列表、全屏自动禁用、其他键重置超时、
 系统托盘、开机自启、统计、抖动日志、提示音。
 
-### 九处必须告知的偏离
+### 十处必须告知的偏离
 
 1. **`Core/HotKeys.cs` 删除了 2 行**（`using System.Security.Permissions;` 与
    `[PermissionSet(SecurityAction.LinkDemand, Name = "FullTrust")]`）。
@@ -61,7 +61,12 @@ AcceleratedKeyMap.cs  KeysHelper.cs  FullScreenDetectHelper.cs  KBCUtils.cs  Key
    原版引用 `IWshRuntimeLibrary` COM 程序集（.NET Framework 专属），
    本版改用迟绑定的 `WScript.Shell`。产出的快捷方式路径、目标、工作目录**完全一致**：
    `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\KeyboardChatterBlocker.lnk`，
-   勾选状态仍由 `File.Exists(...)` 推导。
+   勾选状态不再只看 `File.Exists(...)`，而是**读出 .lnk 的 `TargetPath` 跟当前 exe 比对**。
+   原版那样只看存在与否会撒谎：`KeyboardChatterBlocker.lnk` 这个名字谁都能占 ——
+   别的软件、或本程序的另一份拷贝写了这个快捷方式，界面照样打勾，
+   但开机启动的根本不是你现在用的这一份。
+   指向别处时本版**不勾**，勾选框里改画一枚方块，悬停会显示实际指向的路径；
+   点一下会把快捷方式改成指向当前这一份。
    唯一差异在**错误路径**：原版创建失败会抛出未捕获异常直接崩溃，本版改为弹中文提示框并回滚勾选状态。
 
 3. **两处下拉框的判定逻辑改为按索引**，枚举值与配置序列化格式不受影响。
@@ -130,6 +135,9 @@ AcceleratedKeyMap.cs  KeysHelper.cs  FullScreenDetectHelper.cs  KBCUtils.cs  Key
 
    - 只有「同一按键连续两次按下」才计入间隔，`A→B→A` 里的两次 A 之间夹了 B，不计；
      键盘自动重复（按住不放）也不算新的按下。
+   - **间隔超过 1 秒的直接丢弃，不进样本**。抖动是毫秒级的；隔了一秒以上再按是
+     「又按了一下」，跟抖动无关，收进样本只会把平均间隔拉成没有意义的数字 ——
+     按几下停一会儿，平均值就被稀释到看不出问题了。
    - 右上角「重置」按钮清空红框标记、高亮状态与全部统计，可随时重新测一轮。
      它**只能用鼠标点** —— 这一页的每一次按键都是测试数据，不能让按钮把空格/回车吃掉。
      （`ModernButton.Focusable = false`：关掉 `Selectable`、拿到焦点立刻让出、并吞掉空格与回车。
@@ -146,6 +154,17 @@ AcceleratedKeyMap.cs  KeysHelper.cs  FullScreenDetectHelper.cs  KBCUtils.cs  Key
    本版拆开：启动仍由 `hide_in_system_tray` 管，关闭由新增的 `close_to_tray` 管。
    托盘图标被 `disable_tray_icon` 关掉时，关闭会照常退出（否则窗口既不在任务栏、
    也没有托盘图标，将无处可寻）。
+
+10. **纯展示的地方一律不接键盘** —— 这是个键盘工具，敲键盘时不该把界面点着。
+    「抖动日志」「统计」两页的表格、「键盘测试」页的「重置」按钮都设成不可获焦点：
+    方向键不改选中、打字不触发「首字母跳行」、空格/回车不触发按钮单元格，
+    焦点也不会在鼠标点过之后留在它们身上。鼠标点选、双击、滚轮全部照常。
+    「按键配置」页要用 Delete 删键，所以保持可获焦点。
+
+    > 实现上有个坑：单关 `ControlStyles.Selectable` 是不够的 —— `CanSelect` 确实会变成
+    > `false`、Tab 也跳不过去，但 `ButtonBase` 在鼠标按下时会**绕过** `Selectable`
+    > 直接调 `Focus()`，所以按钮照样能拿到焦点。要三件事一起做：关 `Selectable`、
+    > 拿到焦点立刻让给下一个控件、再吞掉空格与回车。
 
 ---
 
@@ -278,6 +297,9 @@ PerMonitorV2 下 WinForms 会把 `AutoScaleDimensions` 改写成当前 DPI，导
 | 红框标记 | 拦下 A 和 D 并松开后，两键仍带红框、标记数=2；点「重置」后标记与统计一并归零 |
 | 「重置」不吃按键 | 鼠标点「重置」仍照常清空标记，但焦点不会落在按钮上（`CanSelect=False`、`Focus()` 返回 false）；随后按空格/回车，标记数不变，空格照常被记进「总按键数」 |
 | 测试页统计 | 注入 `A`(间隔 305ms) → `A`(间隔 55ms，应被拦) → `D` 共 4 次按下：总按键数=4、抖动事件=1、最小间隔=94ms（落在 100ms 阈值内）、平均间隔=218ms，状态行转为红色告警；按住不放的自动重复未计入按下次 |
+| 间隔 1 秒上限 | 按 `A` → 停 1.5 秒 → 再按 `A`：总按键数=2，平均间隔显示「—」（长间隔未进样本）；再隔约 450ms 按一次，平均间隔=453ms（短间隔正常计入） |
+| 表格屏蔽键盘 | 「抖动日志」「统计」两页：`Focusable=False`、`CanSelect=False`、`Focus()` 返回 false；真实鼠标点击后焦点不在表格上；`WM_MOUSEWHEEL` 仍能滚动（首行 0 → 9） |
+| 开机自启的归属判定 | 启动项指向 `D:\KeyboardChatterBlocker.exe`、而程序跑在别处时：不勾 + 方块标记；自建 .lnk 指向本 exe → 判为自己，指向记事本 → 不是自己，文件不存在 → 读出 null |
 | 右侧读数边栏 | 读数随按键实时更新；收起后内容区自动填满，标题栏开关的颜色跟随状态变化（展开=强调色、收起=灰） |
 | 关闭到托盘 | 走真实 ✕ 路径（`Form.Close()`）时 `CloseReason=UserClosing, Cancel=True`，窗口隐藏且托盘图标出现；`close_to_tray: false` 时正常退出；与 `hide_in_system_tray` 互相独立 |
 | 输入焦点 | 启动后及每次换页都会把焦点从侧边栏阈值框让开 —— 否则在这个键盘工具里随便敲什么都会跑进阈值框 |

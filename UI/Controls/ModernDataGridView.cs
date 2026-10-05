@@ -1,4 +1,5 @@
-﻿using System.ComponentModel;
+﻿using System;
+using System.ComponentModel;
 using System.Drawing;
 using System.Windows.Forms;
 using KeyboardChatterBlocker.UI.Theme;
@@ -13,6 +14,62 @@ namespace KeyboardChatterBlocker.UI.Controls
     /// </summary>
     public class ModernDataGridView : DataGridView
     {
+        private bool _focusable = true;
+        private bool _yieldingFocus;
+
+        /// <summary>
+        /// 是否接受焦点，默认 <c>true</c>。
+        /// <para>
+        /// 设为 <c>false</c> 后表格只能用鼠标操作（点选、双击、滚轮），
+        /// 键盘完全不会落进来：没有焦点 → 方向键不改选中、空格/回车不触发按钮单元格、
+        /// 打字也不会触发「首字母跳行」。
+        /// </para>
+        /// <para>
+        /// 「抖动日志」「统计」两页纯展示，必须屏蔽 —— 这是个键盘工具，
+        /// 用户敲键盘时不该把界面点着。而「按键配置」页要用 Delete 删键，保持可获焦点。
+        /// </para>
+        /// </summary>
+        public bool Focusable
+        {
+            get { return _focusable; }
+            set
+            {
+                if (_focusable == value) { return; }
+                _focusable = value;
+                SetStyle(ControlStyles.Selectable, value);
+                TabStop = value;
+                if (!value && Focused && Parent != null)
+                {
+                    Parent.SelectNextControl(this, true, true, true, true);
+                }
+            }
+        }
+
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            // 建句柄时 WinForms 会把 Selectable 重新打开，必须在那之后再关一次
+            if (!_focusable) { SetStyle(ControlStyles.Selectable, false); }
+        }
+
+        /// <summary>
+        /// 不可获焦点时，一旦拿到焦点就立刻让给下一个控件。
+        /// 光关 <see cref="ControlStyles.Selectable"/> 挡不住鼠标点击带来的焦点，
+        /// 必须在焦点落下的瞬间把它交出去。
+        /// </summary>
+        protected override void OnGotFocus(EventArgs e)
+        {
+            base.OnGotFocus(e);
+            if (_focusable || _yieldingFocus) { return; }
+            _yieldingFocus = true;
+            try
+            {
+                Control c = Parent;
+                if (c == null || !c.SelectNextControl(this, true, true, true, true)) { c?.Focus(); }
+            }
+            finally { _yieldingFocus = false; }
+        }
+
         public ModernDataGridView()
         {
             SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint, true);

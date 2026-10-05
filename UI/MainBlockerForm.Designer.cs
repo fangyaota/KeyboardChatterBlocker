@@ -47,6 +47,7 @@ namespace KeyboardChatterBlocker
         public ModernCheckBox StartWithWindowsCheckbox;
         public ModernCheckBox TrayIconCheckbox;
         public ModernCheckBox CloseToTrayCheckbox;
+        private ToolTip StartupToolTip;
 
         // —— 导航 ——
         private SideNavButton navLog;
@@ -322,6 +323,8 @@ namespace KeyboardChatterBlocker
             };
             StartWithWindowsCheckbox.SetBounds(pad, pad + P(18), inner, P(22));
             StartWithWindowsCheckbox.CheckedChanged += StartWithWindowsCheckbox_CheckedChanged;
+            // 快捷方式被别的程序占用时，靠它说明「那个 .lnk 指向的是谁」
+            StartupToolTip = new ToolTip();
 
             TrayIconCheckbox = new ModernCheckBox
             {
@@ -402,7 +405,9 @@ namespace KeyboardChatterBlocker
         {
             Panel page = MakePage();
 
-            ModernDataGridView grid = new ModernDataGridView { Dock = DockStyle.Fill };
+            // 纯展示页：屏蔽键盘。否则方向键会改选中、打字会触发「首字母跳行」，
+            // 空格/回车还可能按下「配置」那一列的按钮单元格、直接弹出对话框。
+            ModernDataGridView grid = new ModernDataGridView { Dock = DockStyle.Fill, Focusable = false };
             colLogTime = new DataGridViewTextBoxColumn { HeaderText = Strings.ColTime, Width = P(150) };
             // 「按键」列吃掉剩余宽度，避免右侧留一条突兀的空白
             colLogKey = new DataGridViewTextBoxColumn { HeaderText = Strings.ColKey, AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill, MinimumWidth = P(140) };
@@ -420,7 +425,8 @@ namespace KeyboardChatterBlocker
         {
             Panel page = MakePage();
 
-            ModernDataGridView grid = new ModernDataGridView { Dock = DockStyle.Fill };
+            // 纯展示页：屏蔽键盘（理由同「抖动日志」页）
+            ModernDataGridView grid = new ModernDataGridView { Dock = DockStyle.Fill, Focusable = false };
             colStatsKey = new DataGridViewTextBoxColumn { HeaderText = Strings.ColKey, AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill, MinimumWidth = P(160) };
             colStatsCount = new DataGridViewTextBoxColumn { HeaderText = Strings.ColCount, Width = P(120), ValueType = typeof(int) };
             colStatsChatter = new DataGridViewTextBoxColumn { HeaderText = Strings.ColChatter, Width = P(120), ValueType = typeof(int) };
