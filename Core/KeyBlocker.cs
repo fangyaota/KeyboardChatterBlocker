@@ -711,9 +711,17 @@ namespace KeyboardChatterBlocker
             // 所以那份文件两边都能读，全局行一个字节都没变。
             foreach (KeyValuePair<string, AcceleratedKeyMap<int>> perDevice in StatsKeyCountByDevice)
             {
+                // 注意：这里**不能**直接索引 StatsKeyChatterByDevice ——
+                // 一把键盘只要有按键计数、却一次抖动都没被拦过，那张表里就没有它的条目，
+                // 直接索引会抛 KeyNotFoundException，而这条路是「点关闭」必经的（SaveConfig → 这里）。
+                AcceleratedKeyMap<int> deviceChatters;
+                if (!StatsKeyChatterByDevice.TryGetValue(perDevice.Key, out deviceChatters))
+                {
+                    deviceChatters = _discardedStats;
+                }
                 foreach (KeyValuePair<Keys, int> keyData in perDevice.Value.MainDictionary)
                 {
-                    int chatterTotal = StatsKeyChatterByDevice[perDevice.Key][keyData.Key];
+                    int chatterTotal = deviceChatters[keyData.Key];
                     output.Append($"dev:{perDevice.Key},{keyData.Key.Stringify()},{keyData.Value},{chatterTotal},\n");
                 }
             }
