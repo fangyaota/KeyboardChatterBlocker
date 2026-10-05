@@ -106,7 +106,8 @@
         public const string TestVerdictAllow = "放行";
         public const string TestVerdictBlocked = "被拦下";
         public const string TestAwaiting = "等待按键…";
-        public const string TestLegend = "蓝色 = 已按下并放行　红色 = 已按下但被屏蔽吞掉";
+        public const string TestLegend = "蓝色 = 已按下并放行　红色 = 已按下但被屏蔽吞掉　红框 = 曾被拦下过";
+        public const string TestClearMarksFormat = "清除标记 ({0})";
         public const string TestHintAutoDisabled = "（程序当前被自动禁用，键盘钩子已卸载，此页暂时收不到按键）";
 
         // —— 关于 ——

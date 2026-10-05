@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
@@ -159,6 +159,30 @@ namespace KeyboardChatterBlocker.UI.Controls
         private readonly HashSet<Keys> _down = new HashSet<Keys>();
         private readonly HashSet<Keys> _blockedDown = new HashSet<Keys>();
 
+        /// <summary>
+        /// 本次会话中「曾经被屏蔽拦下过」的按键。
+        /// 与 <see cref="_blockedDown"/> 不同，它在按键松开后<b>不会</b>消失 ——
+        /// 这样测完一轮以后，问题键会一直带着红框留在图上，一眼就能看出来。
+        /// </summary>
+        private readonly HashSet<Keys> _everBlocked = new HashSet<Keys>();
+
+        /// <summary>当前被标记为「曾经被拦下」的按键数量。</summary>
+        public int BlockedMarkCount => _everBlocked.Count;
+
+        /// <summary>清除所有红色标记。</summary>
+        public void ClearBlockedMarks()
+        {
+            if (_everBlocked.Count == 0)
+            {
+                return;
+            }
+            _everBlocked.Clear();
+            if (Visible)
+            {
+                Invalidate();
+            }
+        }
+
         public KeyboardMap()
         {
             SetStyle(ControlStyles.AllPaintingInWmPaint
@@ -187,6 +211,7 @@ namespace KeyboardChatterBlocker.UI.Controls
                 else
                 {
                     _blockedDown.Add(key);
+                    _everBlocked.Add(key);   // 留下永久标记，松手也不消失
                 }
             }
             else
@@ -257,6 +282,7 @@ namespace KeyboardChatterBlocker.UI.Controls
 
                 bool down = _down.Contains(cap.Vk);
                 bool blocked = down && _blockedDown.Contains(cap.Vk);
+                bool marked = !down && _everBlocked.Contains(cap.Vk);
 
                 Color fill, border, text;
                 if (blocked)
@@ -271,6 +297,13 @@ namespace KeyboardChatterBlocker.UI.Controls
                     fill = p.Accent;
                     border = p.Accent;
                     text = p.AccentText;
+                }
+                else if (marked)
+                {
+                    // 松手之后仍然留红框，方便事后一眼看出哪些键被拦过
+                    fill = Palette.Mix(p.ControlBg, p.Danger, 0.10f);
+                    border = p.Danger;
+                    text = p.Text;
                 }
                 else
                 {

@@ -307,6 +307,9 @@ namespace KeyboardChatterBlocker
         /// <summary>本次会话是否已有过按键。</summary>
         private bool _testHasReading;
 
+        /// <summary>上次刷进按钮文本的标记数量，用来避免每次按键都重设文本。</summary>
+        private int _lastBlockedMarkCount = -1;
+
         private readonly HashSet<Keys> _testDownKeys = new HashSet<Keys>();
         private readonly Dictionary<Keys, ulong> _testLastPressOfKey = new Dictionary<Keys, ulong>();
         private ulong _testLastPressAny;
@@ -346,6 +349,7 @@ namespace KeyboardChatterBlocker
                 RenderTestDownKeys();
             }
             TestKeyboardMap.SetKeyState(key, isDown, allowed);
+            UpdateTestMarkCount();
         }
 
         /// <summary>把状态区刷新成当前记录的读数。</summary>
@@ -371,6 +375,26 @@ namespace KeyboardChatterBlocker
                 TestVerdictLabel.Visible = true;
             }
             RenderTestDownKeys();
+        }
+
+        /// <summary>把「曾经被拦下」的键数刷进按钮，并决定它是否可点。</summary>
+        private void UpdateTestMarkCount()
+        {
+            int n = TestKeyboardMap.BlockedMarkCount;
+            if (n == _lastBlockedMarkCount)
+            {
+                return;
+            }
+            _lastBlockedMarkCount = n;
+            TestClearMarksButton.Text = string.Format(Strings.TestClearMarksFormat, n);
+            TestClearMarksButton.Enabled = n > 0;
+        }
+
+        /// <summary>清除键盘图上的红色标记，便于开始下一轮测试。</summary>
+        private void TestClearMarksButton_Click(object sender, EventArgs e)
+        {
+            TestKeyboardMap.ClearBlockedMarks();
+            UpdateTestMarkCount();
         }
 
         private static string FormatInterval(long ms)

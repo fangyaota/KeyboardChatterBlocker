@@ -80,6 +80,7 @@ namespace KeyboardChatterBlocker
 
         // —— 键盘测试页 ——
         public KeyboardMap TestKeyboardMap;
+        public ModernButton TestClearMarksButton;
         public ModernLabel TestLastKeyLabel;
         public ModernLabel TestSinceLabel;
         public ModernLabel TestSameKeyLabel;
@@ -574,6 +575,17 @@ namespace KeyboardChatterBlocker
             card.Controls.Add(legend);
             card.Controls.Add(TestHintLabel);
             card.Controls.Add(title);
+
+            TestClearMarksButton = new ModernButton
+            {
+                Text = string.Format(Strings.TestClearMarksFormat, 0),
+                Size = new Size(P(150), P(Metrics.ButtonHeight)),
+                Enabled = false,
+            };
+            TestClearMarksButton.Click += TestClearMarksButton_Click;
+            card.Controls.Add(TestClearMarksButton);
+            TestClearMarksButton.BringToFront();
+            card.Resize += (s, e) => PositionOverlay(TestClearMarksButton, card);
 
             page.Controls.Add(card);
             return page;
